@@ -1,0 +1,14 @@
+# Update the path to this CONFIG.yaml file in function load_config of module train.py
+
+PATH :
+  DATA_DIR : "/home/colind/work/Mines/TR_DIMA/DIMA_code/data"
+
+DATA :
+  NUMBER_OF_CHANNELS : 50
+  BALANCE : True
+  TEST_SIZE : 0.2
+
+TRAINING_INFO :
+  NUM_EPOCHS : 250
+  HIDDEN_SIZE : "half"  # "half" : number_of_features // 2
+  LEARNING_RATE : 0.06
