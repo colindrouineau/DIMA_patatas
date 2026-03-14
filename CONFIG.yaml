@@ -4,11 +4,15 @@ PATH :
   DATA_DIR : "/home/colind/work/Mines/TR_DIMA/DIMA_code/data"
 
 DATA :
-  NUMBER_OF_CHANNELS : 50
+  TOTAL_N_CHANNELS : 111
+  NUMBER_OF_CHANNELS : "all"
   BALANCE : True
   TEST_SIZE : 0.2
 
 TRAINING_INFO :
+  # for Neural Network
   NUM_EPOCHS : 250
   HIDDEN_SIZE : "half"  # "half" : number_of_features // 2
   LEARNING_RATE : 0.06
+  # for decision tree
+  MAX_DEPTH : 3

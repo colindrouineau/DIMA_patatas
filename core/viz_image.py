@@ -113,9 +113,10 @@ class VizImage:
             fig, update, frames=len(images), interval=1000, blit=False
         )
         # Save or show
+        os.makedirs(os.path.join(self.data_dir, "..", "viz", "animations"), exist_ok=True)
         ani.save(
             os.path.join(
-                self.data_dir, "animations", f"{format}_{side}_fol{leaf_number}_ani.gif"
+                self.data_dir, "..", "viz", "animations", f"{format}_{side}_fol{leaf_number}_ani.gif"
             ),
             writer="pillow",
             fps=1,
@@ -142,7 +143,6 @@ class VizImage:
         cmap = plt.get_cmap("viridis")
 
         for frame, spectre in enumerate(spectres_xy):
-            print(frame)
             plt.plot(
                 list(range(len(spectre))),
                 spectre,
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     im_viz = VizImage(number_of_channels=NUMBER_OF_CHANNELS)
 
     CHANNEL_NUMBER = 80
-    x, y = 150, 100
+    x, y = 100, 150
 
     # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER)
     # im_viz.show_pixel_spec(LEAF_NAME, x, y)
