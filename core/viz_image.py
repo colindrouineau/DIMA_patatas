@@ -1,15 +1,17 @@
 import glob
-from matplotlib import pyplot as plt
-import matplotlib
-import matplotlib.animation as animation
 import os
+import matplotlib
+
+matplotlib.use("TkAgg")
+from matplotlib import pyplot as plt
+import matplotlib.animation as animation
+
 from PIL import Image
 import numpy as np
 import spectral as sp1
+
 from open_image import OpenImage
 import utils
-
-matplotlib.use("TkAgg")
 
 
 class VizImage:
@@ -123,7 +125,12 @@ class VizImage:
 
         # Create animation
         ani = animation.FuncAnimation(
-            fig, update, frames=len(images), interval=1000, blit=False, repeat_delay=3000
+            fig,
+            update,
+            frames=len(images),
+            interval=1000,
+            blit=False,
+            repeat_delay=3000,
         )
         # Save or show
         os.makedirs(

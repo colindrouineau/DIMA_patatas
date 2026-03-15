@@ -35,3 +35,11 @@ def sort_images(path_list):
         time_state = extract_time_state(leaf)
         return (num, side, time_state)
     return sorted(path_list, key=key_sort_func)
+
+def leaf_training_list(test_leaves):
+    """Returns numbers of training leaves (those which are not test)"""
+    number_of_leaves = load_config("DATA", "NUMBER_OF_LEAVES")
+    all_leaves = list(range(1, number_of_leaves + 1))
+    train_leave_numbers = sorted(list(set(all_leaves) - set(test_leaves)))[::-1]
+    return train_leave_numbers
+

@@ -1,8 +1,8 @@
 import os
 import spectral as sp1
-
 from PIL import Image
 import numpy as np
+
 import utils
 
 
@@ -32,11 +32,14 @@ class OpenImage:
         path = os.path.join(self.data_dir, "HSI", leaf_number, side, leaf + ".hdr")
         spec_lib = sp1.envi.open(path)
         hsi_arr = spec_lib.asarray()
-        if self.number_of_channels in list(range(1, 112)):
+        n_tot_channels = utils.load_config("DATA", "TOTAL_N_CHANNELS")
+        if self.number_of_channels == n_tot_channels:
+            return hsi_arr
+        if self.number_of_channels in list(range(1, n_tot_channels + 1)):
             # Slice to select only some channels
             step = hsi_arr.shape[2] // self.number_of_channels
             start = (hsi_arr.shape[2] % self.number_of_channels) // 2
-            end = -(hsi_arr.shape[2] % self.number_of_channels) // 2
+            end = -(hsi_arr.shape[2] % self.number_of_channels) // 2     
             hsi_arr = hsi_arr[:, :, start:end:step]
         return hsi_arr
 
@@ -58,12 +61,14 @@ class OpenImage:
         dist_img = Image.open(path)
         return np.array(dist_img)
 
-    def leaves(self, enves_only=True):
+    def leaves(self, enves_only=True, leaf_numbers=None):
         """Returns a sorted list of all the leaf names in the db,
-        containing haz only if not `enves_only`."""
+        containing haz only if not `enves_only`.
+        
+        :param list | None leaf_number: if is None, returns all leaves, else the ones in the list"""
         leaf_names = []
         hsi_path = os.path.join(self.data_dir, "HSI")
-        leaves = os.listdir(hsi_path)
+        leaves = os.listdir(hsi_path) if leaf_numbers is None else [f"foliolo{leaf_number}" for leaf_number in leaf_numbers]
         for leaf in leaves:
             time_series = os.listdir(os.path.join(hsi_path, leaf, "enves"))
             # remove extension and duplicates
