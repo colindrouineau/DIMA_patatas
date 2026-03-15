@@ -5,6 +5,7 @@ import matplotlib.animation as animation
 import os
 from PIL import Image
 import numpy as np
+import spectral as sp1
 from open_image import OpenImage
 import utils
 
@@ -63,31 +64,44 @@ class VizImage:
         plt.show()
 
     def show_leaf_evol(
-        self, leaf_number: int, side="enves", format="lab", red_pixel=None
+        self,
+        leaf_number: int,
+        side="enves",
+        red_pixel: tuple | None = None,
+        channel: int | None = None,
     ):
         """Show and save animation of the temporal evolution of a given leaf
 
-        :param tuple red_pixel: if not None, position of a pixel that will be in red for all the animation
+        :param tuple red_pixel: if not None, position of a pixel that will be in a different colour for all the animation
+        :param None | int channel: if None, shows lab image evolution.
+        Else, it must be the channel number and this function shows the HSI evolution for this channel.
         """
-        folder = {"lab": "Lab_Feb2025_Mask", "HSI": "HSI", "dist": "Mask_Distance"}[
-            format
-        ]
+        folder = "Lab_Feb2025_Mask" if channel is None else "HSI"
         path_to_images = os.path.join(
             self.data_dir, folder, f"foliolo{leaf_number}", side
         )
         # Load images
-        paths = utils.sort_images(glob.glob(f"{path_to_images}/*.png"))
-        images = [np.array(Image.open(file)) for file in paths]
+        if channel is None:
+            paths = utils.sort_images(glob.glob(f"{path_to_images}/*.png"))
+            images = [np.array(Image.open(file)) for file in paths]
+        else:
+            paths = utils.sort_images(glob.glob(f"{path_to_images}/*.hdr"))
+            images = [
+                np.array(sp1.envi.open(file).asarray())[:, :, channel] for file in paths
+            ]
+
         if red_pixel is not None:
             x, y = red_pixel
             for image in images:
-                (
+                [
                     image[x, y],
                     image[x + 1, y],
                     image[x - 1, y],
                     image[x, y + 1],
                     image[x, y - 1],
-                ) = (100, 100, 100, 100, 100)
+                ] = (
+                    [100] * 5 if channel is None else [1] * 5
+                )
         # select time of the image from the path
         time_states = [
             path.split("/")[-1].split(".")[0].split("_")[-1] for path in paths
@@ -103,20 +117,25 @@ class VizImage:
         # Animation function
         def update(frame):
             im.set_array(images[frame])
-            title = ax.set_title(
-                f"Evolution of leaf {format}_{side}_fol{leaf_number} ; time_state = {time_states[frame]} ; pix = {red_pixel}"
+            ax.set_title(
+                f"Evolution of leaf {folder.split("_")[0]}_{side}_fol{leaf_number} ; time_state = {time_states[frame]} ; pix = {red_pixel}"
             )
-            return [im, title]
 
         # Create animation
         ani = animation.FuncAnimation(
-            fig, update, frames=len(images), interval=1000, blit=False
+            fig, update, frames=len(images), interval=1000, blit=False, repeat_delay=3000
         )
         # Save or show
-        os.makedirs(os.path.join(self.data_dir, "..", "viz", "animations"), exist_ok=True)
+        os.makedirs(
+            os.path.join(self.data_dir, "..", "viz", "animations"), exist_ok=True
+        )
         ani.save(
             os.path.join(
-                self.data_dir, "..", "viz", "animations", f"{format}_{side}_fol{leaf_number}_ani.gif"
+                self.data_dir,
+                "..",
+                "viz",
+                "animations",
+                f"{folder.split("_")[0]}_{side}_fol{leaf_number}_ani.gif",
             ),
             writer="pillow",
             fps=1,
@@ -124,8 +143,7 @@ class VizImage:
         plt.show()
 
     def show_pixel_evol(self, leaf_number: int, x: int, y: int, side="enves"):
-        """Shows the evolution of spectrogram for chosen pixel"""
-
+        """Shows the evolution of spectrogram for chosen pixel for chosen side"""
         path_to_images = os.path.join(
             self.data_dir, "HSI", f"foliolo{leaf_number}", side
         )
@@ -155,20 +173,31 @@ class VizImage:
         plt.legend()
         plt.show()
 
+    def overlap_img(self, leaf, channel):
+        """Plots the overlay of lab img of a leaf and its HSI for a chosen channel"""
+        hsi_arr = self.open_im.hsi_array(leaf)
+        lab_im = self.open_im.lab_array(leaf)
+        plt.imshow(hsi_arr[:, :, channel])
+        plt.imshow(lab_im, alpha=0.4)
+        plt.title(leaf)
+        plt.show()
+
 
 if __name__ == "__main__":
-    LEAF_NAME = "foliolo2_enves_a4"
+    LEAF_NAME = "foliolo1_enves_a4"
     NUMBER_OF_CHANNELS = -1
 
     im_viz = VizImage(number_of_channels=NUMBER_OF_CHANNELS)
 
-    CHANNEL_NUMBER = 80
-    x, y = 100, 150
+    CHANNEL_NUMBER = 70
+    x, y = 130, 110
 
     # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER)
     # im_viz.show_pixel_spec(LEAF_NAME, x, y)
     # im_viz.show_lab_img(LEAF_NAME)
     # im_viz.show_dist_img(LEAF_NAME)
 
-    im_viz.show_leaf_evol(1, red_pixel=(x, y))
+    # im_viz.show_leaf_evol(1, red_pixel=(x, y))
     im_viz.show_pixel_evol(1, x, y)
+    # im_viz.overlap_img(LEAF_NAME, CHANNEL_NUMBER)
+    im_viz.show_leaf_evol(1, red_pixel=(x, y), channel=CHANNEL_NUMBER)

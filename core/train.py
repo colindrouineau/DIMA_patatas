@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.optim import lr_scheduler
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
@@ -22,6 +23,15 @@ from sklearnex import patch_sklearn
 from six import StringIO
 import pydotplus
 
+############## TENSORBOARD ########################
+import sys
+import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter
+
+# default `log_dir` is "runs" - we'll be more specific here
+
+###################################################
+
 
 class Train:
     """
@@ -31,7 +41,12 @@ class Train:
     def __init__(
         self, number_of_channels=utils.load_config("DATA", "NUMBER_OF_CHANNELS")
     ):
-        """Instanciates OpenImage and DataFormatter, and set device to GPU, as attributes"""
+        """Instanciates OpenImage and DataFormatter, and set device to GPU, as attributes.
+
+        Attributes
+        ----------
+        - balance: if True, calls `balance_data` function for the training dataset
+        """
         self.open_im = OpenImage(number_of_channels=number_of_channels)
         self.data_formatter = DataFormatter(number_of_channels=number_of_channels)
         self.number_of_channels = (
@@ -44,13 +59,23 @@ class Train:
         else:
             print("The GPU is NOT available.")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.data_dir = utils.load_config("PATH", "DATA_DIR")
 
-    def load_data(self, channels="all"):
+        self.data_dir = utils.load_config("PATH", "DATA_DIR")
+        tb_path = os.path.join(self.data_dir, "..", "runs")
+        os.makedirs(tb_path, exist_ok=True)
+        self.writer = SummaryWriter(tb_path)
+        self.max_depth = utils.load_config("TRAINING_INFO", "MAX_DEPTH")
+        self.balance = utils.load_config("DATA", "BALANCE")
+        self.test_size = utils.load_config("DATA", "TEST_SIZE")
+        self.learning_rate = utils.load_config("TRAINING_INFO", "LEARNING_RATE")
+        self.num_epochs = utils.load_config("TRAINING_INFO", "NUM_EPOCHS")
+
+    def load_data(self, channels=None):
         """Load data.
         Set number of samples and number of features as attributes.
 
-        :param list | str channel: if channel != "all", selects channels (accordingly to the list `channel`)
+        :param list | None channel: if channel is not None, selects channels (accordingly to the list `channel`).
+        If it is None, selects channels as indicated in CONFIG file.
 
         Returns
         -------
@@ -60,14 +85,14 @@ class Train:
             Labels array. Dim (number_of_samples)
         """
         leaves = self.open_im.leaves()
-        if channels == "all":
+        if channels is None:
             x_set = np.empty((0, self.number_of_channels))
         else:
             x_set = np.empty((0, len(channels)))
         y_set = []
         for leaf in tqdm(leaves, desc="loading data", unit="leaf"):
             x, y = self.data_formatter.leaf_mask_data(leaf)
-            if channels != "all":
+            if channels is not None:
                 x = x[:, channels]
             x_set = np.concat((x_set, x))
             y_set = np.concat((y_set, y))
@@ -76,7 +101,7 @@ class Train:
         print(
             f"There are {n_samples} pixels in the loaded dataset with each {n_features} channels"
         )
-        print(f"The proportion of bad pixels is {100 * np.mean(y_set):.2f}")
+        print(f"The proportion of bad pixels is {100 * np.mean(y_set):.2f} %")
         self.n_samples = n_samples
         self.n_features = n_features
         return x_set, y_set
@@ -99,31 +124,22 @@ class Train:
 
         return x[suffle_idx], y[suffle_idx]
 
-    def scale_and_split_data(
-        self,
-        x_set,
-        y_set,
-        balance=utils.load_config("DATA", "BALANCE"),
-        test_size=utils.load_config("DATA", "TEST_SIZE"),
-        to_tensor=True
-    ):
+    def scale_and_split_data(self, x_set, y_set, to_tensor=True, scale=True):
         """Fits the data for Neural Network training.
-
-        :param bool balance: if True, calls `balance_data` function for the training dataset
 
         Returns
         -------
         X_train, X_test, y_train, y_test"""
         X_train, X_test, y_train, y_test = train_test_split(
-            x_set, y_set, test_size=test_size, random_state=1234, stratify=y_set
+            x_set, y_set, test_size=self.test_size, random_state=1, stratify=y_set
         )
         # Add duplicates in the training set to have 50/50 distribution of sick/non sick pixels
-        if balance:
+        if self.balance:
             X_train, y_train = self.balance_data(X_train, y_train)
-        # scale
-        sc = StandardScaler()
-        X_train = sc.fit_transform(X_train)
-        X_test = sc.transform(X_test)
+        if scale:
+            sc = StandardScaler()
+            X_train = sc.fit_transform(X_train)
+            X_test = sc.transform(X_test)
 
         if to_tensor:
             X_train = torch.from_numpy(X_train.astype(np.float32)).to(self.device)
@@ -140,17 +156,19 @@ class Train:
     def define_model(self):
         """Returns model, criterion, optimizer"""
         model = NeuralNet(self.n_features).to(self.device)
-        learning_rate = utils.load_config("TRAINING_INFO", "LEARNING_RATE")
+
         criterion = nn.BCELoss()
-        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+        optimizer = torch.optim.SGD(model.parameters(), lr=self.learning_rate)
         return model, criterion, optimizer
 
-    def loop(self, num_epochs=utils.load_config("TRAINING_INFO", "NUM_EPOCHS")):
+    def loop(self):
         """Main training loop"""
+
         x_set, y_set = self.load_data()
         X_train, X_test, y_train, y_test = self.scale_and_split_data(x_set, y_set)
         model, criterion, optimizer = self.define_model()
-        for epoch in range(num_epochs):
+        step_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.97)
+        for epoch in range(self.num_epochs):
             # Forward pass and loss
             y_pred = model(X_train)
             loss = criterion(y_pred, y_train)
@@ -158,22 +176,43 @@ class Train:
             # Backward pass and update
             loss.backward()
             optimizer.step()
+            step_lr_scheduler.step()
 
             # zero grad before new step
             optimizer.zero_grad()
 
-            if (epoch + 1) % (max(num_epochs // 15, 1)) == 0:
+            if (epoch + 1) % (max(self.num_epochs // 15, 1)) == 0:
                 print(f"epoch: {epoch+1}, loss = {loss.item():.4f}")
+                self.writer.add_scalar("training loss", loss.item(), epoch)
+
+        # save only state dict
+        nn_backup_path = os.path.join(
+            self.data_dir, "..", "model_backup", "neural_network"
+        )
+        os.makedirs(nn_backup_path, exist_ok=True)
+        # Potentially make "MLP" a var
+        FILE = os.path.join(
+            nn_backup_path,
+            f"MLP_{self.num_epochs}epochs_lr:{self.learning_rate}_{self.n_features}features_balanced:{self.balance}.pth",
+        )
+        torch.save(model.state_dict(), FILE)
+        # print(model.state_dict())
+        # writer.add_image('mnist_images', img_grid) (to add an image
 
         with torch.no_grad():
+            self.writer.add_graph(model, X_train[0, :])
             # Print model performance
             y_predicted = model(X_test)
-            y_test = y_test.to("cpu").numpy().flatten().astype(bool)
-            y_predicted = y_predicted.round().to("cpu").numpy().flatten().astype(bool)
+            y_test = y_test.to("cpu").numpy().flatten()
+            y_predicted = y_predicted.to("cpu").numpy().flatten()
+            self.writer.add_pr_curve("recall curve", y_test, y_predicted, global_step=0)
+            self.writer.close()
             self.performance_2class(y_test, y_predicted)
 
     def performance_2class(self, y_test, y_predicted):
         """Print performance information of a 2-class classification model"""
+        y_test = y_test.astype(bool)
+        y_predicted = y_predicted.round().astype(bool)
         n = y_test.shape[0]
         # type fit for mask
         y_predicted = y_predicted.astype(bool)
@@ -192,22 +231,25 @@ class Train:
         print(f"TPR: {100 * true_positive / (true_positive + false_negative):.2f} %")
         print(f"FPR: {100 * false_positive / (false_positive + true_negative):.2f} %")
 
-    def decision_tree(self):
+    # test phase
+    def decision_tree(self, channels):
         patch_sklearn()
-        x_set, y_set = self.load_data(channels=[27, 80])
-        X_train, X_test, y_train, y_test = self.scale_and_split_data(x_set, y_set, to_tensor=False)
+        x_set, y_set = self.load_data(channels=channels)
+        X_train, X_test, y_train, y_test = self.scale_and_split_data(
+            x_set, y_set, to_tensor=False, scale=False
+        )
 
         # Create Decision Tree classifer object
-        clf = DecisionTreeClassifier(max_depth=utils.load_config("TRAINING_INFO", "MAX_DEPTH"))
+        clf = DecisionTreeClassifier(max_depth=self.max_depth)
         # Train Decision Tree Classifer
         clf = clf.fit(X_train, y_train)
         # Predict the response for test dataset
         y_pred = clf.predict(X_test)
 
         self.performance_2class(y_test, y_pred)
-        self.viz_decision_tree(clf)
+        self.viz_decision_tree(clf, channels)
 
-    def viz_decision_tree(self, clf):
+    def viz_decision_tree(self, clf, channels):
         dot_data = StringIO()
         export_graphviz(
             clf,
@@ -215,7 +257,7 @@ class Train:
             filled=True,
             rounded=True,
             special_characters=True,
-            feature_names=["27", "80"],
+            feature_names=[str(channel) for channel in channels],
             class_names=["0", "1"],
         )
         graph = pydotplus.graph_from_dot_data(dot_data.getvalue())
@@ -226,5 +268,6 @@ class Train:
 
 if __name__ == "__main__":
     trainer = Train()
-    # trainer.loop()
-    trainer.decision_tree()
+    trainer.loop()
+    CHANNELS = [15, 27, 80, 100]
+    # trainer.decision_tree(channels=CHANNELS)

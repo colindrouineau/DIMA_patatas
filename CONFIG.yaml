@@ -5,14 +5,14 @@ PATH :
 
 DATA :
   TOTAL_N_CHANNELS : 111
-  NUMBER_OF_CHANNELS : "all"
-  BALANCE : True
+  NUMBER_OF_CHANNELS : 25 # "all"
+  BALANCE : False
   TEST_SIZE : 0.2
 
 TRAINING_INFO :
   # for Neural Network
-  NUM_EPOCHS : 250
-  HIDDEN_SIZE : "half"  # "half" : number_of_features // 2
-  LEARNING_RATE : 0.06
+  NUM_EPOCHS : 600
+  HIDDEN_SIZE : "HALF"  # "HALF" : number_of_features // 2 ; "INPUT" : number_of_features
+  LEARNING_RATE : 0.07
   # for decision tree
-  MAX_DEPTH : 3
+  MAX_DEPTH : 6  # For no limit : null

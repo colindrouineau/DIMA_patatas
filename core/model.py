@@ -6,8 +6,10 @@ class NeuralNet(nn.Module):
     def __init__(self, input_size):
         super(NeuralNet, self).__init__()
         hidden_size = utils.load_config("TRAINING_INFO", "HIDDEN_SIZE")
-        if hidden_size == "half":
+        if hidden_size == "HALF":
             hidden_size = input_size // 2
+        if hidden_size == "INPUT":
+            hidden_size = input_size
         self.linear1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
         self.linear2 = nn.Linear(hidden_size, hidden_size)
@@ -22,3 +24,5 @@ class NeuralNet(nn.Module):
         out = self.linear3(out)
         out = self.sigmoid(out)
         return out
+    
+
