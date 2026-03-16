@@ -1,6 +1,7 @@
 import numpy as np
 import os
 from tqdm import tqdm
+from datetime import datetime
 
 import torch
 import torch.nn as nn
@@ -14,6 +15,7 @@ from sklearnex import (
 from open_image import OpenImage
 from format_data import DataFormatter
 from model import NeuralNet, DecisionTree
+from test_model import ModelTester
 import utils
 
 
@@ -39,6 +41,7 @@ class Train:
         self.data_formatter = DataFormatter(
             device=self.device, number_of_channels=self.number_of_channels
         )
+        self.model_tester = ModelTester()
 
         if torch.cuda.is_available():
             print("The GPU is available and will be used for computation.")
@@ -46,15 +49,16 @@ class Train:
             print("The GPU is NOT available.")
 
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
-        tb_path = os.path.join(self.data_dir, "..", "runs")
-        os.makedirs(tb_path, exist_ok=True)
-        self.writer = SummaryWriter(tb_path)
+        self.tb_path = os.path.join(self.data_dir, "..", "runs")
         self.max_depth = utils.load_config("TRAINING_INFO", "MAX_DEPTH")
         self.balance = utils.load_config("DATA", "BALANCE")
         self.learning_rate = utils.load_config("TRAINING_INFO", "LEARNING_RATE")
         self.num_epochs = utils.load_config("TRAINING_INFO", "NUM_EPOCHS")
         self.test_leaves = utils.load_config("DATA", "TEST_LEAVES")
-        self.train_leave_numbers = utils.leaf_training_list(self.test_leaves)
+        self.validation_leaves = utils.load_config("DATA", "VALIDATION_LEAVES")
+        self.train_leave_numbers = utils.leaf_training_list(
+            self.test_leaves + self.validation_leaves
+        )
         self.tree_channels = utils.load_config("TRAINING_INFO", "CHANNELS")
 
     def define_nn_functions(self):
@@ -66,32 +70,60 @@ class Train:
 
     def loop_nobatch(self):
         """Main training loop. All data is loaded at once before the beginning of the loop."""
-        x_set, y_set = self.data_formatter.load_data(
+        date = datetime.today().strftime("%Y-%m-%d,%H:%M")
+        exp_path = os.path.join(self.tb_path, "MLP", "MLP_" + date)
+        os.makedirs(exp_path, exist_ok=True)
+        self.writer = SummaryWriter(exp_path)
+        X_train, y_train = self.data_formatter.load_data(
             leaf_numbers=self.train_leave_numbers
         )
         X_train, y_train = self.data_formatter.scale_and_split_data(
-            x_set, y_set, trainer=True
+            X_train, y_train, requires_grad=True
         )
+        X_val, y_val = self.data_formatter.load_data(
+            leaf_numbers=self.validation_leaves
+        )
+        X_val, y_val = self.data_formatter.scale_and_split_data(X_val, y_val)
         model, criterion, optimizer = self.define_nn_functions()
         step_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.97)
-
+        print(
+            f"train set shape = {X_train.shape}; validation set shape =  {X_val.shape}"
+        )
         for epoch in tqdm(range(self.num_epochs), desc="training", unit="epoch"):
-            # Forward pass and loss
+
+            # validation
+            model.eval()
+            with torch.no_grad():
+                y_pred_val = model(X_val)
+                val_loss = criterion(y_pred_val, y_val).item()
+            # Train
+            model.train(True)
             y_pred = model(X_train)
             loss = criterion(y_pred, y_train)
-            # Backward pass and update
+            training_loss = loss.item()
+
             loss.backward()
             optimizer.step()
             step_lr_scheduler.step()
-            # zero grad before new step
             optimizer.zero_grad()
 
+            self.writer.add_scalars(
+                "Training vs. Validation Loss",
+                {"Training": training_loss, "Validation": val_loss},
+                epoch + 1,
+            )
+            self.writer.add_scalar(
+                "learning_rate",
+                step_lr_scheduler.optimizer.param_groups[0]["lr"],
+                epoch,
+            )
             if (epoch + 1) % (max(self.num_epochs // 15, 1)) == 0:
-                print(f"epoch: {epoch+1}, loss = {loss.item():.4f}")
-                self.writer.add_scalar("training loss", loss.item(), epoch)
+                print(
+                    f"epoch: {epoch+1}, training_loss = {training_loss:.4f}, val_loss = {val_loss:.4f}"
+                )
 
         model.save_nn(
-            file_name=f"MLP_{self.num_epochs}epochs_lr:{self.learning_rate}_{self.number_of_channels}features_balanced:{self.balance}.pth"
+            file_name=f"{date}_MLP_{self.num_epochs}epochs_lr:{self.learning_rate}_{self.number_of_channels}features_balanced:{self.balance}_.pth"
         )
         self.nn_results(model, ex_vect=X_train)
 
@@ -103,68 +135,81 @@ class Train:
                 model, ex_vect[0, :]
             )  # Don't know what it does exactly
             x_set, y_set = self.data_formatter.load_data(leaf_numbers=self.test_leaves)
-            X_test, y_test = self.data_formatter.scale_and_split_data(
-                x_set, y_set, trainer=False
-            )
+            X_test, y_test = self.data_formatter.scale_and_split_data(x_set, y_set)
             # Print model performance
             y_predicted = model(X_test)
             y_test = y_test.to("cpu").numpy().flatten()
             y_predicted = y_predicted.to("cpu").numpy().flatten()
-            self.writer.add_pr_curve("recall curve", y_test, y_predicted, global_step=0)
+            self.writer.add_pr_curve("recall curve", y_test, y_predicted)
+
+            metrics_dictionary = self.model_tester.performance_2class(
+                y_test, y_predicted
+            )
+            hparam_dict = {
+                "number of epochs": self.num_epochs,
+                "number of features": self.number_of_channels,
+                "balance dataset": self.balance,
+            }
+            self.writer.add_text("h_param", str(hparam_dict))
+            self.writer.add_text("metrics", str(metrics_dictionary))
+            self.writer.add_hparams(
+                hparam_dict=hparam_dict, metric_dict=metrics_dictionary
+            )
             self.writer.close()
-            self.performance_2class(y_test, y_predicted)
 
     def decision_tree(self):
         """decision tree training"""
+        date = datetime.today().strftime("%Y-%m-%d,%H:%M")
+        exp_path = os.path.join(self.tb_path, "tree", "tree_" + date)
+        os.makedirs(exp_path, exist_ok=True)
+        self.writer = SummaryWriter(exp_path)
+        # set all channels for opening hsi
+        self.data_formatter.open_im.number_of_channels = utils.load_config(
+            "DATA", "TOTAL_N_CHANNELS"
+        )
         patch_sklearn()
         x_set, y_set = self.data_formatter.load_data(
             channels=self.tree_channels, leaf_numbers=self.train_leave_numbers
         )
         X_train, y_train = self.data_formatter.scale_and_split_data(
-            x_set, y_set, trainer=True, to_tensor=False, scale=False
+            x_set, y_set, to_tensor=False, scale=False
         )
-
         # Create Decision Tree classifer object
         clf = DecisionTree(max_depth=self.max_depth, channels=self.tree_channels)
         # Train Decision Tree Classifer
         clf = clf.fit(X_train, y_train)
+        file_name = f"{date}_tree_max-depth:{self.max_depth}_channels:{str(self.tree_channels).replace(" ", "")}_balanced:{self.balance}_.joblib"
+        clf.save_tree(file_name)
+        self.tree_results(clf)
+
+    def tree_results(self, clf):
         # Predict the response for test dataset
 
         x_set, y_set = self.data_formatter.load_data(
             channels=self.tree_channels, leaf_numbers=self.test_leaves
         )
         X_test, y_test = self.data_formatter.scale_and_split_data(
-            x_set, y_set, trainer=False, to_tensor=False, scale=False
+            x_set, y_set, to_tensor=False, scale=False
         )
         y_pred = clf.predict(X_test)
-        self.performance_2class(y_test, y_pred)
-        clf.viz_decision_tree()
+        metrics_dictionary = self.model_tester.performance_2class(y_test, y_pred)
+        hparam_dict = {
+            "max_depth": self.max_depth,
+            "channels": self.tree_channels,
+            "balance dataset": self.balance,
+        }
+        self.writer.add_text("h_param", str(hparam_dict))
+        self.writer.add_text("metrics", str(metrics_dictionary))
+        # lists are not supported for hparam_dict
+        hparam_dict["channels"] = str(hparam_dict["channels"])
+        self.writer.add_hparams(hparam_dict=hparam_dict, metric_dict=metrics_dictionary)
+        self.writer.close()
 
-    def performance_2class(self, y_test, y_predicted):
-        """Print performance information of a 2-class classification model"""
-        y_test = y_test.astype(bool)
-        y_predicted = y_predicted.round().astype(bool)
-        n = y_test.shape[0]
-        # type fit for mask
-        y_predicted = y_predicted.astype(bool)
-        y_test = y_test.astype(bool)
-        true_positive = np.sum(y_predicted & y_test).astype(float)
-        false_positive = np.sum(y_predicted & ~y_test).astype(float)
-        true_negative = np.sum(~y_predicted & ~y_test).astype(float)
-        false_negative = np.sum(~y_predicted & y_test).astype(float)
-        print(
-            f"Proportion of sick pixel: {100 * (true_positive + false_negative) / n:.2f} %"
-        )
-        print(
-            f"Proportion of pixel detected as sick: {100 * (true_positive + false_positive) / n:.2f} %"
-        )
-        print(f"accuracy: {100 * (true_positive + true_negative) / n:.2f} %")
-        print(f"TPR: {100 * true_positive / (true_positive + false_negative):.2f} %")
-        print(f"FPR: {100 * false_positive / (false_positive + true_negative):.2f} %")
+        # clf.viz_decision_tree()
 
 
 if __name__ == "__main__":
     trainer = Train()
     trainer.loop_nobatch()
 
-    # trainer.decision_tree(channels=CHANNELS)
+    trainer.decision_tree()

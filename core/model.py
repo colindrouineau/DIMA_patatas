@@ -4,6 +4,7 @@ import torch
 from sklearn.tree import DecisionTreeClassifier, export_graphviz
 from six import StringIO
 import pydotplus
+from joblib import dump  # for tree saving
 
 import utils
 
@@ -11,7 +12,7 @@ import utils
 class NeuralNet(nn.Module):
     """Simple MLP"""
 
-    def __init__(self, input_size):
+    def __init__(self, input_size: int):
         super(NeuralNet, self).__init__()
 
         hidden_size = utils.load_config("TRAINING_INFO", "HIDDEN_SIZE")
@@ -45,18 +46,34 @@ class NeuralNet(nn.Module):
         )
         os.makedirs(nn_backup_path, exist_ok=True)
         # Potentially make "MLP" a var
-        FILE = os.path.join(
+        file = os.path.join(
             nn_backup_path,
             file_name,
         )
-        torch.save(self.state_dict(), FILE)
+        torch.save(self.state_dict(), file)
         # print(model.state_dict())
+        print(f"Model saved as {file}")
 
 
 class DecisionTree(DecisionTreeClassifier):
     def __init__(self, max_depth, channels):
         super(DecisionTree, self).__init__(max_depth=max_depth)
         self.channels = channels
+
+    def save_tree(self, file_name):
+        tree_backup_path = os.path.join(
+            utils.load_config("PATH", "DATA_DIR"),
+            "..",
+            "model_backup",
+            "tree",
+        )
+        os.makedirs(tree_backup_path, exist_ok=True)
+        file = os.path.join(
+            tree_backup_path,
+            file_name,
+        )
+        dump(self, file)  # Serialize the model to disk
+        print(f"Model saved as {file}")
 
     def viz_decision_tree(self):
         dot_data = StringIO()

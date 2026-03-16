@@ -205,6 +205,6 @@ if __name__ == "__main__":
     # im_viz.show_dist_img(LEAF_NAME)
 
     # im_viz.show_leaf_evol(1, red_pixel=(x, y))
-    im_viz.show_pixel_evol(1, x, y)
+    # im_viz.show_pixel_evol(1, x, y)
     # im_viz.overlap_img(LEAF_NAME, CHANNEL_NUMBER)
-    im_viz.show_leaf_evol(1, red_pixel=(x, y), channel=CHANNEL_NUMBER)
+    im_viz.show_leaf_evol(2, red_pixel=(x, y), channel=CHANNEL_NUMBER)

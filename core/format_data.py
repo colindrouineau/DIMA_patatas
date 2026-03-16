@@ -53,7 +53,7 @@ class DataFormatter:
         """Load data.
         Set number of samples and number of features as attributes.
 
-        :param list | None channel: if channel is not None, selects channels (accordingly to the list `channel`).
+        :param list | None channels: if channels is not None, selects channels (accordingly to the list `channels`).
         If it is None, selects channels as indicated in CONFIG file.
         :param list | None leaf_number: if None, all leaves data should be loaded. If list, only the corresponding leaves.
 
@@ -118,57 +118,28 @@ class DataFormatter:
         return x[suffle_idx], y[suffle_idx]
 
     def scale_and_split_data(
-        self, x_set, y_set, to_tensor=True, scale=True, trainer: bool | None = None
+        self,
+        x_set,
+        y_set,
+        to_tensor=True,
+        scale=True,
+        requires_grad: bool = False,
     ) -> tuple:
-        """Fits the data for Neural Network training.
-
-        :param None | bool trainer:
-        - if None, splits data using train_test_split and returns train and test data.
-        - if True, use all x_set and y_set as train data
-        - if False, use all x_set and y_set as test data
-
-        Returns
-        -------
-        X_train, X_test, y_train, y_test"""
-        if trainer is None:
-            X_train, X_test, y_train, y_test = train_test_split(
-                x_set,
-                y_set,
-                test_size=utils.load_config("DATA", "TEST_SIZE"),
-                random_state=1,
-                stratify=y_set,
-            )
-        if trainer is True:
-            X_train, y_train = x_set, y_set  # should I shuffle ?
-        if trainer is False:
-            X_test, y_test = x_set, y_set
-
+        """Fits the data for Neural Network training. Optional parameters to specify data type and transformation."""
         # Add duplicates in the training set to have 50/50 distribution of sick/non sick pixels
-        if self.balance and (trainer is None or trainer is True):
-            X_train, y_train = self.balance_data(X_train, y_train)
+        if self.balance:
+            x_set, y_set = self.balance_data(x_set, y_set)
         if scale:
             sc = StandardScaler()
-            if trainer is not False:
-                X_train = sc.fit_transform(X_train)
-            if trainer is not True:
-                X_test = sc.fit_transform(X_test)
-
+            x_set = sc.fit_transform(x_set)
         if to_tensor:
-            if trainer is not False:
-                X_train = torch.from_numpy(X_train.astype(np.float32)).to(self.device)
-                X_train.requires_grad_(True)
-                y_train = torch.from_numpy(y_train.astype(np.float32)).to(self.device)
-                y_train = y_train.view(y_train.shape[0], 1)
-            if trainer is not True:
-                X_test = torch.from_numpy(X_test.astype(np.float32)).to(self.device)
-                y_test = torch.from_numpy(y_test.astype(np.float32)).to(self.device)
-                y_test = y_test.view(y_test.shape[0], 1)
+            x_set = torch.from_numpy(x_set.astype(np.float32)).to(self.device)
+            y_set = torch.from_numpy(y_set.astype(np.float32)).to(self.device)
+            y_set = y_set.view(y_set.shape[0], 1)
+        if requires_grad:
+            x_set.requires_grad_(True)
 
-        if trainer is True:
-            return X_train, y_train
-        if trainer is False:
-            return X_test, y_test
-        return X_train, X_test, y_train, y_test
+        return x_set, y_set
 
 
 if __name__ == "__main__":
