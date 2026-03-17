@@ -5,9 +5,8 @@ from datetime import datetime
 
 import torch
 import torch.nn as nn
-from torch.optim import lr_scheduler
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
-
 from sklearnex import (
     patch_sklearn,
 )  # it should enable GPU for sklearn but doesn't seem to work
@@ -62,11 +61,20 @@ class Train:
         self.tree_channels = utils.load_config("TRAINING_INFO", "CHANNELS")
 
     def define_nn_functions(self):
-        """Returns model, criterion, optimizer"""
+        """Returns model, criterion, optimizer, lr_scheduler"""
         model = NeuralNet(self.number_of_channels).to(self.device)
         criterion = nn.BCELoss()
         optimizer = torch.optim.SGD(model.parameters(), lr=self.learning_rate)
-        return model, criterion, optimizer
+        # step_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.97)
+        training_info = utils.load_config("TRAINING_INFO")
+        scheduler = ReduceLROnPlateau(
+            optimizer,
+            "min",
+            factor=training_info["FACTOR"],
+            patience=training_info["PATIENCE"],
+            threshold=training_info["THRESHOLD"],
+        )
+        return model, criterion, optimizer, scheduler
 
     def loop_nobatch(self):
         """Main training loop. All data is loaded at once before the beginning of the loop."""
@@ -84,8 +92,9 @@ class Train:
             leaf_numbers=self.validation_leaves
         )
         X_val, y_val = self.data_formatter.scale_and_split_data(X_val, y_val)
-        model, criterion, optimizer = self.define_nn_functions()
-        step_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.97)
+
+        model, criterion, optimizer, step_lr_scheduler = self.define_nn_functions()
+
         print(
             f"train set shape = {X_train.shape}; validation set shape =  {X_val.shape}"
         )
@@ -103,8 +112,8 @@ class Train:
             training_loss = loss.item()
 
             loss.backward()
+            step_lr_scheduler.step(val_loss)
             optimizer.step()
-            step_lr_scheduler.step()
             optimizer.zero_grad()
 
             self.writer.add_scalars(
@@ -117,11 +126,17 @@ class Train:
                 step_lr_scheduler.optimizer.param_groups[0]["lr"],
                 epoch,
             )
-            if (epoch + 1) % (max(self.num_epochs // 15, 1)) == 0:
+            if (epoch + 1) % (max(self.num_epochs // 15, 1)) == 0 or epoch == 0:
                 print(
-                    f"epoch: {epoch+1}, training_loss = {training_loss:.4f}, val_loss = {val_loss:.4f}"
+                    f"epoch: {epoch+1}, training_loss = {training_loss:.4f}, val_loss = {val_loss:.4f}, lr = {step_lr_scheduler.get_last_lr()[0]:.4f}"
                 )
-
+            if step_lr_scheduler.get_last_lr()[0] < 1e-5:
+                break
+        if step_lr_scheduler.get_last_lr()[0] < 1e-5:
+            print(f"Training is optimal. number of epochs = {epoch}")
+            print(
+                f"Final training_loss = {training_loss:.4f}, val_loss = {val_loss:.4f}"
+            )
         model.save_nn(
             file_name=f"{date}_MLP_{self.num_epochs}epochs_lr:{self.learning_rate}_{self.number_of_channels}features_balanced:{self.balance}_.pth"
         )
@@ -149,6 +164,7 @@ class Train:
                 "number of epochs": self.num_epochs,
                 "number of features": self.number_of_channels,
                 "balance dataset": self.balance,
+                "initial lr": self.learning_rate,
             }
             self.writer.add_text("h_param", str(hparam_dict))
             self.writer.add_text("metrics", str(metrics_dictionary))
@@ -212,4 +228,4 @@ if __name__ == "__main__":
     trainer = Train()
     trainer.loop_nobatch()
 
-    trainer.decision_tree()
+    # trainer.decision_tree()

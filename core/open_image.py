@@ -86,7 +86,7 @@ class OpenImage:
 
 
 if __name__ == "__main__":
-    LEAF_NAME = "foliolo2_enves_a4"
+    LEAF_NAME = "foliolo2_enves_a5"
     NUMBER_OF_CHANNELS = -1
 
     open_im = OpenImage(number_of_channels=NUMBER_OF_CHANNELS)

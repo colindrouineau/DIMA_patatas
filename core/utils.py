@@ -52,6 +52,7 @@ def leaf_training_list(not_train_leaves):
 
 
 def get_nfeatures_from_name(name):
+    """For MLP model name"""
     info = name.split("_")
     if len(info) == 5:
         n_features = name.split("_")[3]
@@ -63,6 +64,7 @@ def get_nfeatures_from_name(name):
 
 
 def get_channels_from_name(name):
+    """For tree model name"""
     channels_string = name.split("_")[3].split('.')[0]
     list_string = channels_string.split(":")[1]
     return ast.literal_eval(list_string)

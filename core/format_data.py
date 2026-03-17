@@ -1,7 +1,7 @@
 import numpy as np
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
+
 import torch
 
 from open_image import OpenImage
@@ -14,7 +14,9 @@ class DataFormatter:
     """
 
     def __init__(
-        self, device, number_of_channels=utils.load_config("DATA", "NUMBER_OF_CHANNELS")
+        self,
+        device=None,
+        number_of_channels=utils.load_config("DATA", "NUMBER_OF_CHANNELS"),
     ):
         self.open_im = OpenImage(number_of_channels=number_of_channels)
         self.test_leaves = utils.load_config("DATA", "TEST_LEAVES")
@@ -24,11 +26,12 @@ class DataFormatter:
         self.balance = utils.load_config("DATA", "BALANCE")
         self.device = device
 
-    def leaf_mask_data(self, leaf):
+    def leaf_mask_data(self, leaf, return_mask=False):
         """Filters pixels on the leaf and format data to a list.
         Takes pixel which are on both HSI leaf and lab_img leaf.
 
         :param str leaf: name of the leaf
+        :param bool return_mask: if True, returns (label_array, leaf_mask)
 
         Returns
         -------
@@ -43,11 +46,47 @@ class DataFormatter:
         mask_hsi = hsi_array.max(axis=-1) > 0.01
         mask_lab = lab_arr > 0.01
         leaf_mask = mask_hsi & mask_lab
+
+        if return_mask:
+            return lab_arr, leaf_mask
         x_leaf_pixels = hsi_array[leaf_mask]
         y_leaf_labels = lab_arr[leaf_mask]
         # label = 1 if the pixel is sick, 0 otherwise
         y_leaf_labels = np.where(y_leaf_labels == 200, 1, 0)
+
         return x_leaf_pixels, y_leaf_labels
+
+    def reconstitute_leaf(self, leaf, y_pred):
+        """
+        Reconstitutes predicted label array to initial leaf geometry
+
+        Returns
+        -------
+        y_real, y_pred : (np.array, np.array)
+            images of real and predicted label
+        """
+        y_real, leaf_mask = self.leaf_mask_data(leaf, return_mask=True)
+        # check if the labeling is continuous or 0,1
+        category = list(np.unique(y_pred).astype(int)) == [0, 1]
+        if category:
+            # put y_pred to 0, 200, 255 format like y_real
+            y_pred = np.where(y_pred == 1, 200, 255)
+        else:
+            # 0 = out of leaf. Fill the whole possible range of values ([0,255])
+            y_pred = (y_pred + 0.05) * (255 / 1.05)
+
+        # track mask transformation :
+        height, width = leaf_mask.shape
+        position_arr = np.array([[(x, y) for y in range(width)] for x in range(height)])
+        # becomes a 1D arr, but we tracked position transformations
+        masked_position_arr = position_arr[leaf_mask]
+        # reconstitute 2 D array
+        y_pred_leaf = np.zeros((height, width))
+        # add missing values
+        for label, (x, y) in zip(y_pred, masked_position_arr):
+            y_pred_leaf[x, y] = label
+
+        return y_real, y_pred_leaf
 
     def load_data(self, channels=None, leaf_numbers=None):
         """Load data.
@@ -147,4 +186,11 @@ if __name__ == "__main__":
     LEAF_NAME = "foliolo2_enves_a4"
 
     data_format = DataFormatter(NUMBER_OF_CHANNELS)
-    data_format.leaf_mask_data(LEAF_NAME)
+    X, y = data_format.leaf_mask_data(LEAF_NAME)
+    # taking y_real as test y_pred
+    y_real, y_pred = data_format.reconstitute_leaf(LEAF_NAME, y_pred=y, category=True)
+
+    from viz_image import VizImage
+
+    visualise = VizImage()
+    visualise.plot_y_real_pred(y_real, y_pred, title=LEAF_NAME)

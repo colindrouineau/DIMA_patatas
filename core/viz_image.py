@@ -24,7 +24,7 @@ class VizImage:
     ):
         self.open_im = OpenImage(number_of_channels=number_of_channels)
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
-
+        
     def show_channel(self, leaf, channel_number):
         """Shows image for chosen channel"""
         hsi_array = self.open_im.hsi_array(leaf)
@@ -128,9 +128,9 @@ class VizImage:
             fig,
             update,
             frames=len(images),
-            interval=1000,
+            interval=750,
             blit=False,
-            repeat_delay=3000,
+            repeat_delay=2000,
         )
         # Save or show
         os.makedirs(
@@ -189,22 +189,40 @@ class VizImage:
         plt.title(leaf)
         plt.show()
 
+    def plot_y_real_pred(self, y_real, y_pred, title=None):
+        """shows side by side predicted and real label."""
+        plt.subplot(1, 2, 1)
+        plt.imshow(y_real)
+        plt.title(f"real label")
+        plt.colorbar()
+
+        plt.subplot(1, 2, 2)
+        plt.imshow(y_pred)
+        plt.title(f"predicted label")
+        plt.colorbar()
+
+        plt.suptitle(title)
+
+        plt.show()
+
 
 if __name__ == "__main__":
-    LEAF_NAME = "foliolo1_enves_a4"
+    LEAF_NAME = "foliolo2_enves_a5"
     NUMBER_OF_CHANNELS = -1
 
     im_viz = VizImage(number_of_channels=NUMBER_OF_CHANNELS)
 
     CHANNEL_NUMBER = 70
-    x, y = 130, 110
+    x, y = 253, 138
 
     # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER)
     # im_viz.show_pixel_spec(LEAF_NAME, x, y)
-    # im_viz.show_lab_img(LEAF_NAME)
+    im_viz.show_lab_img(LEAF_NAME)
     # im_viz.show_dist_img(LEAF_NAME)
 
     # im_viz.show_leaf_evol(1, red_pixel=(x, y))
     # im_viz.show_pixel_evol(1, x, y)
     # im_viz.overlap_img(LEAF_NAME, CHANNEL_NUMBER)
-    im_viz.show_leaf_evol(2, red_pixel=(x, y), channel=CHANNEL_NUMBER)
+    LEAF_NUMBER = 2
+    im_viz.show_leaf_evol(LEAF_NUMBER, red_pixel=(x, y), channel=CHANNEL_NUMBER)
+    im_viz.show_leaf_evol(LEAF_NUMBER, red_pixel=(x, y), channel=None)
