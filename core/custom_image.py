@@ -114,10 +114,12 @@ class ImageCleaner:
 
         return image, erased_pixel
 
-    def cut_all_stems(self):
-        """Apply `cut_stem_image` to all the leaves in Lab mask dir"""
+    def cut_all_stems(self, folder=None):
+        """Apply `cut_stem_image` to all the leaves in Lab mask dir
+        
+        Possible values for `folder` : "Lab_Feb2025_Mask", "MaskDistance"""
         path_to_folder_lab = os.path.join(
-            utils.load_config("PATH", "DATA_DIR"), "Lab_Feb2025_Mask"
+            utils.load_config("PATH", "DATA_DIR", folder), 
         )
         leaves = os.listdir(path_to_folder_lab)
         for leaf in leaves:
@@ -144,11 +146,11 @@ if __name__ == "__main__":
     P2 = (220, 61)
 
     img_cleaner.cut_in_line(PATH, P1, P2, "left")
+    """
 
     PATH = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/Lab_Feb2025_Mask_arch/foliolo2/enves/foliolo2_enves_a5.png"
 
     img_cleaner.cut_stem_image(PATH)
-    
-    """
 
-    # img_cleaner.cut_all_stems()
+    FOLDER = None
+    img_cleaner.cut_all_stems(folder=FOLDER)

@@ -9,13 +9,38 @@ from joblib import dump  # for tree saving
 import utils
 
 
-class NeuralNet(nn.Module):
-    """Simple MLP"""
+class NeuralNetCommon:
+    """shared neural net functions"""
+
+    def __init__(self):
+        pass
+
+    @classmethod  # later probably should make it an object method
+    def save_nn(cls, file_name, state_dict, mode):
+        # save only state dict
+        nn_backup_path = os.path.join(
+            utils.load_config("PATH", "DATA_DIR"), "..", "model_backup", "nn_" + mode
+        )
+        os.makedirs(nn_backup_path, exist_ok=True)
+        # Potentially make "MLP" a var
+        file = os.path.join(
+            nn_backup_path,
+            file_name,
+        )
+        torch.save(state_dict, file)
+        # print(model.state_dict())
+        print(f"Model saved as {file}")
+
+
+class BinPixNN(nn.Module):
+    """Simple MLP for pixel health binary classification"""
 
     def __init__(self, input_size: int):
-        super(NeuralNet, self).__init__()
+        super(BinPixNN, self).__init__()
 
-        hidden_size = utils.load_config("TRAINING_INFO", "HIDDEN_SIZE")
+        hidden_size = utils.load_config(
+            "TRAINING_INFO", "LAB_MASK", "MLP", "HIDDEN_SIZE"
+        )
         if hidden_size == "HALF":
             hidden_size = input_size // 2
         if hidden_size == "INPUT":
@@ -35,24 +60,36 @@ class NeuralNet(nn.Module):
         out = self.sigmoid(out)
         return out
 
-    def save_nn(self, file_name):
+    def save_nn(self, best_model_state, file_name):
+        """Saves model state_dict. best_model_state is an attribute of EarlyStopping class instance."""
+        NeuralNetCommon.save_nn(file_name, best_model_state, mode="binary")
+
+
+class DistPixNN(nn.Module):
+    """Simple MLP for pixel health binary classification"""
+
+    def __init__(self, input_size: int):
+        super(DistPixNN, self).__init__()
+        hidden_size = 50
+        self.linear1 = nn.Linear(input_size, hidden_size)
+        self.relu = nn.ReLU()
+        self.linear2 = nn.Linear(hidden_size, 40)
+        self.linear3 = nn.Linear(40, hidden_size)
+        self.linear4 = nn.Linear(hidden_size, 1)
+
+    def forward(self, x):
+        out = self.linear1(x)
+        out = self.relu(out)
+        out = self.linear2(out)
+        out = self.relu(out)
+        out = self.linear3(out)
+        out = self.relu(out)
+        out = self.linear4(out)
+        return out
+
+    def save_nn(self, best_model_state, file_name):
         """Saves model state_dict"""
-        # save only state dict
-        nn_backup_path = os.path.join(
-            utils.load_config("PATH", "DATA_DIR"),
-            "..",
-            "model_backup",
-            "neural_network",
-        )
-        os.makedirs(nn_backup_path, exist_ok=True)
-        # Potentially make "MLP" a var
-        file = os.path.join(
-            nn_backup_path,
-            file_name,
-        )
-        torch.save(self.state_dict(), file)
-        # print(model.state_dict())
-        print(f"Model saved as {file}")
+        NeuralNetCommon.save_nn(file_name, best_model_state, mode="distance")
 
 
 class DecisionTree(DecisionTreeClassifier):

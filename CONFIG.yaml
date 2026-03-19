@@ -5,7 +5,7 @@ PATH :
 
 DATA :
   TOTAL_N_CHANNELS : 111
-  NUMBER_OF_CHANNELS : 15 # "all"
+  NUMBER_OF_CHANNELS : 10 # "all"
   BALANCE : False # proportion of sick pixels after transformation. no balance : False
   TEST_SIZE : 0.15 # for random train/test split
   TEST_LEAVES : [15, 16, 17]
@@ -13,14 +13,27 @@ DATA :
   NUMBER_OF_LEAVES : 17
 
 TRAINING_INFO :
-  # for Neural Network
-  NUM_EPOCHS : 2000
-  HIDDEN_SIZE : "HALF"  # "HALF" : number_of_features // 2 ; "INPUT" : number_of_features
-  LEARNING_RATE : 0.3
-  FACTOR : 0.5
-  PATIENCE : 20
-  THRESHOLD : 0.001
-  LABEL_THRESHOLD : 0.75
+  # for Neural Networks
+  LAB_MASK :
+    MLP :
+      NUM_EPOCHS : 2000
+      HIDDEN_SIZE : "HALF"  # "HALF" : number_of_features // 2 ; "INPUT" : number_of_features
+      LEARNING_RATE : 0.3
+      FACTOR : 0.5
+      PATIENCE : 20
+      THRESHOLD : 0.001
+      LABEL_THRESHOLD : 0.75
+  
+  DIST_MASK :
+    MLP :
+      NUM_EPOCHS : 2000
+      HIDDEN_SIZE : "HALF"
+      LEARNING_RATE : 0.001
+      FACTOR : 0.5
+      PATIENCE : 20
+      THRESHOLD : 0.1
+
+  
   # for decision tree
   MAX_DEPTH : 4  # For no limit : null
   CHANNELS : [15, 27, 80, 100]

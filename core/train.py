@@ -13,9 +13,10 @@ from sklearnex import (
 
 from open_image import OpenImage
 from format_data import DataFormatter
-from model import NeuralNet, DecisionTree
+from models import BinPixNN, DecisionTree, DistPixNN
 from test_model import ModelTester
 import utils
+import train_utils
 
 
 class Train:
@@ -23,11 +24,14 @@ class Train:
     Main class for data loading and model training
     """
 
-    def __init__(self):
+    def __init__(self, model_type="MLP", data_type="lab_mask"):
         """
         - instanciates OpenImage and DataFormatter
         - set device to GPU, as attributes
         - set all useful info from CONFIG as attribute
+
+        :param str model_type: by default, "MLP". Other possibilities are "CNN"
+
         """
         self.number_of_channels = (
             utils.load_config("DATA", "NUMBER_OF_CHANNELS")
@@ -35,12 +39,16 @@ class Train:
             else utils.load_config("DATA", "TOTAL_N_CHANNELS")
         )
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model_type = model_type
+        self.data_type = data_type
 
         self.open_im = OpenImage(number_of_channels=self.number_of_channels)
         self.data_formatter = DataFormatter(
-            device=self.device, number_of_channels=self.number_of_channels
+            device=self.device,
+            number_of_channels=self.number_of_channels,
+            data_type=data_type,
         )
-        self.model_tester = ModelTester()
+        self.model_tester = ModelTester(data_type=data_type)
 
         if torch.cuda.is_available():
             print("The GPU is available and will be used for computation.")
@@ -49,37 +57,71 @@ class Train:
 
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
         self.tb_path = os.path.join(self.data_dir, "..", "runs")
-        self.max_depth = utils.load_config("TRAINING_INFO", "MAX_DEPTH")
         self.balance = utils.load_config("DATA", "BALANCE")
-        self.learning_rate = utils.load_config("TRAINING_INFO", "LEARNING_RATE")
-        self.num_epochs = utils.load_config("TRAINING_INFO", "NUM_EPOCHS")
         self.test_leaves = utils.load_config("DATA", "TEST_LEAVES")
         self.validation_leaves = utils.load_config("DATA", "VALIDATION_LEAVES")
         self.train_leave_numbers = utils.leaf_training_list(
             self.test_leaves + self.validation_leaves
         )
+
+        training_info = utils.load_config(
+            "TRAINING_INFO", data_type.upper(), model_type.upper()
+        )
+        self.learning_rate = training_info["LEARNING_RATE"]
+        self.num_epochs = training_info["NUM_EPOCHS"]
+
+        # for decision tree
+        self.max_depth = utils.load_config("TRAINING_INFO", "MAX_DEPTH")
         self.tree_channels = utils.load_config("TRAINING_INFO", "CHANNELS")
 
-    def define_nn_functions(self):
-        """Returns model, criterion, optimizer, lr_scheduler"""
-        model = NeuralNet(self.number_of_channels).to(self.device)
-        criterion = nn.BCELoss()
-        optimizer = torch.optim.SGD(model.parameters(), lr=self.learning_rate)
-        # step_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.97)
-        training_info = utils.load_config("TRAINING_INFO")
-        scheduler = ReduceLROnPlateau(
-            optimizer,
+    def define_mlp_bin_functions(self):
+        training_info = utils.load_config("TRAINING_INFO", "LAB_MASK", "MLP")
+        self.model = BinPixNN(self.number_of_channels).to(self.device)
+        self.criterion = nn.BCELoss()
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        self.step_lr_scheduler = ReduceLROnPlateau(
+            self.optimizer,
             "min",
             factor=training_info["FACTOR"],
             patience=training_info["PATIENCE"],
             threshold=training_info["THRESHOLD"],
         )
-        return model, criterion, optimizer, scheduler
+        self.early_stopping = train_utils.EarlyStopping(patience=10)
 
-    def loop_nobatch(self):
-        """Main training loop. All data is loaded at once before the beginning of the loop."""
-        date = datetime.today().strftime("%Y-%m-%d,%H:%M")
-        exp_path = os.path.join(self.tb_path, "MLP", "MLP_" + date)
+    def define_mlp_dist_functions(self):
+        training_info = utils.load_config("TRAINING_INFO", "DIST_MASK", "MLP")
+        self.model = DistPixNN(self.number_of_channels).to(self.device)
+        self.criterion = nn.MSELoss()
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        self.step_lr_scheduler = ReduceLROnPlateau(
+            self.optimizer,
+            "min",
+            factor=training_info["FACTOR"],
+            patience=training_info["PATIENCE"],
+            threshold=training_info["THRESHOLD"],
+        )
+        self.early_stopping = train_utils.EarlyStopping(patience=100)
+
+    def define_nn_functions(self):
+        """Sets model, criterion, optimizer, lr_scheduler as attributes"""
+        if self.model_type == "MLP" and self.data_type == "lab_mask":
+            self.define_mlp_bin_functions()
+        if self.model_type == "MLP" and self.data_type == "dist_mask":
+            self.define_mlp_dist_functions()
+
+        # step_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.97)
+
+    def loop_initialiser(self):
+        """Returns all useful variables to start training loop, and define training functions
+
+        Returns
+        -------
+        X_train, y_train, X_val, y_val, date
+        """
+        self.date = datetime.today().strftime("%Y-%m-%d,%H:%M")
+        exp_path = os.path.join(
+            self.tb_path, f"{self.model_type}-{self.data_type}", self.date
+        )
         os.makedirs(exp_path, exist_ok=True)
         self.writer = SummaryWriter(exp_path)
         X_train, y_train = self.data_formatter.load_data(
@@ -93,73 +135,108 @@ class Train:
         )
         X_val, y_val = self.data_formatter.scale_and_split_data(X_val, y_val)
 
-        model, criterion, optimizer, step_lr_scheduler = self.define_nn_functions()
+        self.define_nn_functions()
 
         print(
             f"train set shape = {X_train.shape}; validation set shape =  {X_val.shape}"
         )
-        for epoch in tqdm(range(self.num_epochs), desc="training", unit="epoch"):
-
-            # validation
-            model.eval()
-            with torch.no_grad():
-                y_pred_val = model(X_val)
-                val_loss = criterion(y_pred_val, y_val).item()
-            # Train
-            model.train(True)
-            y_pred = model(X_train)
-            loss = criterion(y_pred, y_train)
-            training_loss = loss.item()
-
-            loss.backward()
-            step_lr_scheduler.step(val_loss)
-            optimizer.step()
-            optimizer.zero_grad()
-
-            self.writer.add_scalars(
-                "Training vs. Validation Loss",
-                {"Training": training_loss, "Validation": val_loss},
-                epoch + 1,
-            )
-            self.writer.add_scalar(
-                "learning_rate",
-                step_lr_scheduler.optimizer.param_groups[0]["lr"],
-                epoch,
-            )
-            if (epoch + 1) % (max(self.num_epochs // 15, 1)) == 0 or epoch == 0:
-                print(
-                    f"epoch: {epoch+1}, training_loss = {training_loss:.4f}, val_loss = {val_loss:.4f}, lr = {step_lr_scheduler.get_last_lr()[0]:.4f}"
-                )
-            if step_lr_scheduler.get_last_lr()[0] < 1e-5:
-                break
-        if step_lr_scheduler.get_last_lr()[0] < 1e-5:
-            print(f"Training is optimal. number of epochs = {epoch}")
-            print(
-                f"Final training_loss = {training_loss:.4f}, val_loss = {val_loss:.4f}"
-            )
-        model.save_nn(
-            file_name=f"{date}_MLP_{self.num_epochs}epochs_lr:{self.learning_rate}_{self.number_of_channels}features_balanced:{self.balance}_.pth"
+        return (
+            X_train,
+            y_train,
+            X_val,
+            y_val,
         )
-        self.nn_results(model, ex_vect=X_train)
 
-    def nn_results(self, model, ex_vect):
+    def epoch_info(self, epoch, training_loss, val_loss):
+        """Logs and prints useful information for epoch"""
+        self.writer.add_scalars(
+            "Training vs. Validation Loss",
+            {"Training": training_loss, "Validation": val_loss},
+            epoch + 1,
+        )
+        self.writer.add_scalar(
+            "learning_rate",
+            self.step_lr_scheduler.get_last_lr()[0],
+            epoch,
+        )
+        if (epoch + 1) % (max(self.num_epochs // 15, 1)) == 0 or epoch == 0:
+            print(
+                f"epoch: {epoch+1}, training_loss = {training_loss:.4f}, val_loss = {val_loss:.4f}, lr = {self.step_lr_scheduler.get_last_lr()[0]:.4f}"
+            )
+
+    def one_epoch(self, X_train, y_train, X_val, y_val):
+        # validation
+        self.model.eval()
+        with torch.no_grad():
+            y_pred_val = self.model(X_val)
+            val_loss = self.criterion(y_pred_val, y_val).item()
+        # Train
+        self.model.train(True)
+        y_pred = self.model(X_train)
+        loss = self.criterion(y_pred, y_train)
+        training_loss = loss.item()
+
+        loss.backward()
+        self.step_lr_scheduler.step(val_loss)
+        self.optimizer.step()
+        self.optimizer.zero_grad()
+
+        assert not bool(np.isnan(training_loss)) and not bool(
+            np.isnan(val_loss)
+        ), f"val_loss or training_loss became undefined (vloss = {val_loss}, tloss = {training_loss})"
+        return training_loss, val_loss
+
+    def loop_nobatch(self):
+        """Main training loop. All data is loaded at once before the beginning of the loop."""
+        (
+            X_train,
+            y_train,
+            X_val,
+            y_val,
+        ) = self.loop_initialiser()
+
+        for epoch in tqdm(range(self.num_epochs), desc="training", unit="epoch"):
+            training_loss, val_loss = self.one_epoch(X_train, y_train, X_val, y_val)
+            self.epoch_info(epoch, training_loss, val_loss)
+            # Check early stopping
+            self.early_stopping(val_loss, self.model)
+            if self.early_stopping.early_stop:
+                print(
+                    f"Early stopping triggered at epoch {epoch}. Last (val_loss, train_loss) = {val_loss, training_loss}"
+                )
+                break
+
+        self.end_loop(epoch, training_loss, val_loss)
+
+    def end_loop(self, epoch, training_loss, val_loss):
+        print(
+            f"Final training_loss = {training_loss:.4f}, val_loss = {val_loss:.4f}, last learning rate = {self.step_lr_scheduler.get_last_lr()[0]}"
+        )
+        self.model.save_nn(
+            self.early_stopping.best_model_state,
+            file_name=f"{self.date}_{self.model_type}-on-{self.data_type}_{self.num_epochs}epochs_lr:{self.learning_rate}_{self.number_of_channels}features_balanced:{self.balance}_.pth",
+        )
+        # self.model is not exactly the model we have saved, but it probably is a good approximation.
+        self.nn_results(self.model)
+
+    def nn_results(self, model):
         """Saves model performance to tensorboard and prints it"""
         with torch.no_grad():
             # writer.add_image('mnist_images', img_grid) (to add an image
-            self.writer.add_graph(
-                model, ex_vect[0, :]
-            )  # Don't know what it does exactly
+            # self.writer.add_graph(
+            #     model, ex_vect[0, :]
+            # )  # Don't know what it does exactly
             x_set, y_set = self.data_formatter.load_data(leaf_numbers=self.test_leaves)
             X_test, y_test = self.data_formatter.scale_and_split_data(x_set, y_set)
             # Print model performance
             y_predicted = model(X_test)
             y_test = y_test.to("cpu").numpy().flatten()
             y_predicted = y_predicted.to("cpu").numpy().flatten()
-            self.writer.add_pr_curve("recall curve", y_test, y_predicted)
+            # PR curve makes sense only for 2 class classification problems
+            if self.data_type == "lab_mask":
+                self.writer.add_pr_curve("recall curve", y_test, y_predicted)
 
-            metrics_dictionary = self.model_tester.performance_2class(
-                y_test, y_predicted
-            )
+            metrics_dictionary = self.model_tester.performance(y_test, y_predicted)
             hparam_dict = {
                 "number of epochs": self.num_epochs,
                 "number of features": self.number_of_channels,
@@ -208,7 +285,7 @@ class Train:
             x_set, y_set, to_tensor=False, scale=False
         )
         y_pred = clf.predict(X_test)
-        metrics_dictionary = self.model_tester.performance_2class(y_test, y_pred)
+        metrics_dictionary = self.model_tester.performance(y_test, y_pred)
         hparam_dict = {
             "max_depth": self.max_depth,
             "channels": self.tree_channels,
@@ -225,7 +302,11 @@ class Train:
 
 
 if __name__ == "__main__":
-    trainer = Train()
+
+    DATA_TYPE = "dist_mask"
+    MODEL_TYPE = "MLP"
+
+    trainer = Train(data_type=DATA_TYPE, model_type=MODEL_TYPE)
     trainer.loop_nobatch()
 
     # trainer.decision_tree()

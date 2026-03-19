@@ -4,7 +4,7 @@ import torch
 from sklearn import metrics
 from format_data import DataFormatter
 from viz_image import VizImage
-from model import NeuralNet
+from models import BinPixNN, DistPixNN
 from joblib import load
 import utils
 
@@ -12,18 +12,35 @@ import utils
 class ModelTester:
     """Class to test models"""
 
-    def __init__(self):
+    def __init__(self, data_type="lab_mask"):
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.data_formatter = DataFormatter(
             device=self.device,
             number_of_channels=utils.load_config("DATA", "TOTAL_N_CHANNELS"),
+            data_type=data_type,
         )
         self.test_leaves = utils.load_config("DATA", "TEST_LEAVES")
         self.visualise = VizImage(
             number_of_channels=utils.load_config("DATA", "TOTAL_N_CHANNELS")
         )
-        self.threshold = utils.load_config("TRAINING_INFO", "LABEL_THRESHOLD")
+        self.threshold = utils.load_config(
+            "TRAINING_INFO", "LAB_MASK", "MLP", "LABEL_THRESHOLD"
+        )
+        self.data_type = data_type
+
+    def performance(self, y_test, y_predicted):
+        if self.data_type == "lab_mask":
+            return self.performance_2class(y_test, y_predicted)
+        if self.data_type == "dist_mask":
+            return self.performance_continuous(y_test, y_predicted)
+
+    def performance_continuous(self, y_test, y_predicted):
+        mse = metrics.mean_squared_error(y_test, y_predicted)
+        print("Model's performances on test dataset: ")
+        print(f"Mean squared error = {mse:.2f}")
+        metrics_dictionary = {"MSE": mse}
+        return metrics_dictionary
 
     def performance_2class(
         self,
@@ -56,11 +73,13 @@ class ModelTester:
         }
         return metrics_dictionary
 
-    def nn_perf(self):
-        """Prints performance of all the saved nn models"""
-        models_dir = os.path.join(self.data_dir, "..", "model_backup", "neural_network")
+    def nn_perf(self, models_dir):
+        """Prints performance of all the saved nn models in a directory"""
         model_names = os.listdir(models_dir)
         for model_name in model_names:
+            if model_name.split(".")[-1] != "pth":
+                print(f"{model_name} is not a valid model name")
+                continue
             number_of_channels = utils.get_nfeatures_from_name(model_name)
             # To load the right channels :
             self.data_formatter.open_im.number_of_channels = number_of_channels
@@ -76,7 +95,10 @@ class ModelTester:
         self, number_of_channels, model_path, model_name, X_test, y_test
     ):
         """Load model, print performance, and returns y_pred"""
-        loaded_model = NeuralNet(input_size=number_of_channels).to(self.device)
+        if self.data_type == "lab_mask":
+            loaded_model = BinPixNN(input_size=number_of_channels).to(self.device)
+        if self.data_type == "dist_mask":
+            loaded_model = DistPixNN(input_size=number_of_channels).to(self.device)
         try:
             loaded_model.load_state_dict(torch.load(model_path))
             loaded_model.eval()
@@ -87,7 +109,7 @@ class ModelTester:
                 y_test = y_test.to("cpu").numpy().flatten()
                 y_predicted = y_predicted.to("cpu").numpy().flatten()
                 # Copy to not round the y_predicted about to be returned
-                self.performance_2class(y_test, np.copy(y_predicted))
+                self.performance(y_test, np.copy(y_predicted))
             print()
         except Exception as e:
             print(e)
@@ -146,7 +168,7 @@ class ModelTester:
             y_pred = self.load_nn_and_perf(
                 number_of_channels, model_path, model_name, X_test, y_test
             )
-            if round:
+            if round and self.data_type == "lab_mask":
                 y_pred = np.where(y_pred <= self.threshold, 0, 1)
             y_leaf, y_pred = self.data_formatter.reconstitute_leaf(leaf, y_pred)
             self.visualise.plot_y_real_pred(
@@ -168,11 +190,15 @@ class ModelTester:
 
 
 if __name__ == "__main__":
-    model_tester = ModelTester()
-    # model_tester.nn_perf()
+    DATA_TYPE = "dist_mask"
+    model_tester = ModelTester(data_type=DATA_TYPE)
+    MODELS_DIR = os.path.join(
+        model_tester.data_dir, "..", "model_backup", "neural_network"
+    )
+    # model_tester.nn_perf(models_dir=MODELS_DIR)
     # model_tester.tree_perf()
 
-    LEAF = "foliolo7_enves_a10"
-    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/model_backup/neural_network/2026-03-16,19:19_MLP_2000epochs_lr:0.3_15features_balanced:False_.pth"
-    MODEL_PATH_TREE = "/home/colind/work/Mines/TR_DIMA/DIMA_code/model_backup/tree/2026-03-16,19:55_tree_max-depth:4_channels:[15,27,80,100]_balanced:False_.joblib"
-    model_tester.analyse_one_leaf(LEAF, MODEL_PATH_MLP, round=True)
+    LEAF = "foliolo15_enves_a4"
+    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/nn_distance/2026-03-19,10:02_MLP-on-dist_mask_2000epochs_lr:0.001_10features_balanced:False_.pth"
+    # MODEL_PATH_TREE = "/home/colind/work/Mines/TR_DIMA/DIMA_code/model_backup/tree/2026-03-16,19:55_tree_max-depth:4_channels:[15,27,80,100]_balanced:False_.joblib"
+    model_tester.analyse_one_leaf(LEAF, MODEL_PATH_MLP, round=False)

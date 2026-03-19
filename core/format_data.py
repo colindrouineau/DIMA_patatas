@@ -16,15 +16,17 @@ class DataFormatter:
     def __init__(
         self,
         device=None,
-        number_of_channels=utils.load_config("DATA", "NUMBER_OF_CHANNELS"),
+        number_of_channels: int = utils.load_config("DATA", "NUMBER_OF_CHANNELS"),
+        data_type="lab_mask",
     ):
+        """
+        :param str data_type: labeling data type
+        """
         self.open_im = OpenImage(number_of_channels=number_of_channels)
-        self.test_leaves = utils.load_config("DATA", "TEST_LEAVES")
-        self.number_of_leaves = utils.load_config("DATA", "NUMBER_OF_LEAVES")
-        self.train_leave_numbers = utils.leaf_training_list(self.test_leaves)
         self.number_of_channels = number_of_channels
         self.balance = utils.load_config("DATA", "BALANCE")
         self.device = device
+        self.data_type = data_type
 
     def leaf_mask_data(self, leaf, return_mask=False):
         """Filters pixels on the leaf and format data to a list.
@@ -32,6 +34,7 @@ class DataFormatter:
 
         :param str leaf: name of the leaf
         :param bool return_mask: if True, returns (label_array, leaf_mask)
+
 
         Returns
         -------
@@ -41,18 +44,26 @@ class DataFormatter:
             The label for each pixel
         """
         hsi_array = self.open_im.hsi_array(leaf)
-        lab_arr = self.open_im.lab_array(leaf)
-        # Remove all pixel which have a too low max intensity. (< 0.01)
+        if self.data_type == "lab_mask":
+            lab_arr = self.open_im.lab_array(leaf)
+            # Remove all pixel which have a too low max intensity. (< 0.01) (outside leaf)
+            mask_lab = lab_arr > 0.01
+        if self.data_type == "dist_mask":
+            lab_arr = self.open_im.mask_dist_array(leaf)
+            mask_lab = (
+                lab_arr > -1
+            )  # We take all, assuming hsi filter is enough, since the sick pixels have the same value than pixels outside the leaf
+        
         mask_hsi = hsi_array.max(axis=-1) > 0.01
-        mask_lab = lab_arr > 0.01
         leaf_mask = mask_hsi & mask_lab
 
         if return_mask:
             return lab_arr, leaf_mask
         x_leaf_pixels = hsi_array[leaf_mask]
         y_leaf_labels = lab_arr[leaf_mask]
-        # label = 1 if the pixel is sick, 0 otherwise
-        y_leaf_labels = np.where(y_leaf_labels == 200, 1, 0)
+        if self.data_type == "lab_mask":
+            # label = 1 if the pixel is sick, 0 otherwise
+            y_leaf_labels = np.where(y_leaf_labels == 200, 1, 0)
 
         return x_leaf_pixels, y_leaf_labels
 
@@ -67,13 +78,15 @@ class DataFormatter:
         """
         y_real, leaf_mask = self.leaf_mask_data(leaf, return_mask=True)
         # check if the labeling is continuous or 0,1
-        category = list(np.unique(y_pred).astype(int)) == [0, 1]
-        if category:
-            # put y_pred to 0, 200, 255 format like y_real
-            y_pred = np.where(y_pred == 1, 200, 255)
-        else:
-            # 0 = out of leaf. Fill the whole possible range of values ([0,255])
-            y_pred = (y_pred + 0.05) * (255 / 1.05)
+
+        if self.data_type == "lab_mask":
+            category = list(np.unique(y_pred).astype(int)) == [0, 1]
+            if category:
+                # put y_pred to 0, 200, 255 format like y_real
+                y_pred = np.where(y_pred == 1, 200, 255)
+            else:
+                # 0 = out of leaf. Fill the whole possible range of values ([0,255])
+                y_pred = (y_pred + 0.05) * (255 / 1.05)
 
         # track mask transformation :
         height, width = leaf_mask.shape
@@ -104,12 +117,8 @@ class DataFormatter:
             Labels array. Dim (number_of_samples)
         """
         leaves = self.open_im.leaves(leaf_numbers=leaf_numbers)
-        all_training_leaves = (
-            False
-            if leaf_numbers is None
-            else len(leaf_numbers) == self.number_of_leaves - len(self.test_leaves)
-        )
-        if all_training_leaves:
+        verbose = len(leaves) > 50
+        if verbose:
             leaves = tqdm(leaves, desc="loading data", unit="leaf")
         if channels is None:
             x_set = np.empty((0, self.number_of_channels))
@@ -125,11 +134,14 @@ class DataFormatter:
             y_set = np.concat((y_set, y))
 
         n_samples, n_features = x_set.shape
-        if all_training_leaves:
+        if verbose:
             print(
                 f"There are {n_samples} pixels in the loaded dataset with each {n_features} channels"
             )
-            print(f"The proportion of bad pixels is {100 * np.mean(y_set):.2f} %")
+            if self.data_type == "lab_mask":
+                print(f"The proportion of bad pixels is {100 * np.mean(y_set):.2f} %")
+            if self.data_type == "dist_mask":
+                print(f"The mean distance to a sick pixel is {np.mean(y_set):.2f}")
         return x_set, y_set
 
     def balance_data(self, x, y):
@@ -188,7 +200,7 @@ if __name__ == "__main__":
     data_format = DataFormatter(NUMBER_OF_CHANNELS)
     X, y = data_format.leaf_mask_data(LEAF_NAME)
     # taking y_real as test y_pred
-    y_real, y_pred = data_format.reconstitute_leaf(LEAF_NAME, y_pred=y, category=True)
+    y_real, y_pred = data_format.reconstitute_leaf(LEAF_NAME, y_pred=y)
 
     from viz_image import VizImage
 

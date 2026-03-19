@@ -207,7 +207,7 @@ class VizImage:
 
 
 if __name__ == "__main__":
-    LEAF_NAME = "foliolo2_enves_a5"
+    LEAF_NAME = "foliolo2_enves_a9"
     NUMBER_OF_CHANNELS = -1
 
     im_viz = VizImage(number_of_channels=NUMBER_OF_CHANNELS)
@@ -218,7 +218,7 @@ if __name__ == "__main__":
     # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER)
     # im_viz.show_pixel_spec(LEAF_NAME, x, y)
     im_viz.show_lab_img(LEAF_NAME)
-    # im_viz.show_dist_img(LEAF_NAME)
+    im_viz.show_dist_img(LEAF_NAME)
 
     # im_viz.show_leaf_evol(1, red_pixel=(x, y))
     # im_viz.show_pixel_evol(1, x, y)
