@@ -207,7 +207,7 @@ class VizImage:
 
 
 if __name__ == "__main__":
-    LEAF_NAME = "foliolo2_enves_a9"
+    LEAF_NAME = "foliolo3_enves_a6"
     NUMBER_OF_CHANNELS = -1
 
     im_viz = VizImage(number_of_channels=NUMBER_OF_CHANNELS)
@@ -223,6 +223,6 @@ if __name__ == "__main__":
     # im_viz.show_leaf_evol(1, red_pixel=(x, y))
     # im_viz.show_pixel_evol(1, x, y)
     # im_viz.overlap_img(LEAF_NAME, CHANNEL_NUMBER)
-    LEAF_NUMBER = 2
+    LEAF_NUMBER = 12
     im_viz.show_leaf_evol(LEAF_NUMBER, red_pixel=(x, y), channel=CHANNEL_NUMBER)
     im_viz.show_leaf_evol(LEAF_NUMBER, red_pixel=(x, y), channel=None)

@@ -190,15 +190,15 @@ class ModelTester:
 
 
 if __name__ == "__main__":
-    DATA_TYPE = "dist_mask"
+    DATA_TYPE = "lab_mask"
     model_tester = ModelTester(data_type=DATA_TYPE)
-    MODELS_DIR = os.path.join(
-        model_tester.data_dir, "..", "model_backup", "neural_network"
-    )
+    # MODELS_DIR = os.path.join(
+    #     model_tester.data_dir, "..", "model_backup", "neural_network"
+    # )
     # model_tester.nn_perf(models_dir=MODELS_DIR)
     # model_tester.tree_perf()
 
-    LEAF = "foliolo15_enves_a4"
-    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/nn_distance/2026-03-19,10:02_MLP-on-dist_mask_2000epochs_lr:0.001_10features_balanced:False_.pth"
-    # MODEL_PATH_TREE = "/home/colind/work/Mines/TR_DIMA/DIMA_code/model_backup/tree/2026-03-16,19:55_tree_max-depth:4_channels:[15,27,80,100]_balanced:False_.joblib"
+    LEAF = "foliolo7_enves_a10"
+    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/nn_binary/2026-03-20,23:17_MLP-on-lab_mask_1000epochs_lr:0.3_15features_balanced:False_.pth"
+    MODEL_PATH_TREE = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/tree/2026-03-20,10:44_tree_max-depth:4_channels:[64,68,65]_balanced:False_.joblib"
     model_tester.analyse_one_leaf(LEAF, MODEL_PATH_MLP, round=False)

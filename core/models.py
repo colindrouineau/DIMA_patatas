@@ -44,20 +44,19 @@ class BinPixNN(nn.Module):
         if hidden_size == "HALF":
             hidden_size = input_size // 2
         if hidden_size == "INPUT":
-            hidden_size = input_size
+            hidden_size = input_size + 10
         self.linear1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
-        self.linear2 = nn.Linear(hidden_size, hidden_size)
-        self.linear3 = nn.Linear(hidden_size, 1)
+        self.linear2 = nn.Linear(hidden_size, 1)
+
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
         out = self.linear1(x)
         out = self.relu(out)
         out = self.linear2(out)
-        out = self.relu(out)
-        out = self.linear3(out)
         out = self.sigmoid(out)
+
         return out
 
     def save_nn(self, best_model_state, file_name):
@@ -75,7 +74,8 @@ class DistPixNN(nn.Module):
         self.relu = nn.ReLU()
         self.linear2 = nn.Linear(hidden_size, 40)
         self.linear3 = nn.Linear(40, hidden_size)
-        self.linear4 = nn.Linear(hidden_size, 1)
+        self.linear4 = nn.Linear(hidden_size, hidden_size)
+        self.linear5 = nn.Linear(hidden_size, 1)
 
     def forward(self, x):
         out = self.linear1(x)
@@ -85,6 +85,9 @@ class DistPixNN(nn.Module):
         out = self.linear3(out)
         out = self.relu(out)
         out = self.linear4(out)
+        out = self.relu(out)
+        out = self.linear5(out)
+        out = self.relu(out)
         return out
 
     def save_nn(self, best_model_state, file_name):

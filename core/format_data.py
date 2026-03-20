@@ -86,7 +86,8 @@ class DataFormatter:
                 y_pred = np.where(y_pred == 1, 200, 255)
             else:
                 # 0 = out of leaf. Fill the whole possible range of values ([0,255])
-                y_pred = (y_pred + 0.05) * (255 / 1.05)
+                min_value = 20
+                y_pred = y_pred / np.max(y_pred) * (255 - min_value) + min_value
 
         # track mask transformation :
         height, width = leaf_mask.shape

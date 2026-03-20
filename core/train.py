@@ -67,17 +67,23 @@ class Train:
         training_info = utils.load_config(
             "TRAINING_INFO", data_type.upper(), model_type.upper()
         )
-        self.learning_rate = training_info["LEARNING_RATE"]
-        self.num_epochs = training_info["NUM_EPOCHS"]
+        # Some models don't need a learning rate
+        if "LEARNING_RATE" in training_info:
+            self.learning_rate = training_info["LEARNING_RATE"]
+        if "NUM_EPOCHS" in training_info:
+            self.num_epochs = training_info["NUM_EPOCHS"]
 
         # for decision tree
-        self.max_depth = utils.load_config("TRAINING_INFO", "MAX_DEPTH")
-        self.tree_channels = utils.load_config("TRAINING_INFO", "CHANNELS")
+        if "MAX_DEPTH" in training_info:
+            self.max_depth = training_info["MAX_DEPTH"]
+        if "CHANNELS" in training_info:
+            self.tree_channels = training_info["CHANNELS"]
 
     def define_mlp_bin_functions(self):
         training_info = utils.load_config("TRAINING_INFO", "LAB_MASK", "MLP")
         self.model = BinPixNN(self.number_of_channels).to(self.device)
-        self.criterion = nn.BCELoss()
+        # self.criterion = nn.BCELoss()
+        self.criterion = train_utils.FocalLoss(alpha=1, gamma=2) 
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
         self.step_lr_scheduler = ReduceLROnPlateau(
             self.optimizer,
@@ -159,7 +165,7 @@ class Train:
             self.step_lr_scheduler.get_last_lr()[0],
             epoch,
         )
-        if (epoch + 1) % (max(self.num_epochs // 15, 1)) == 0 or epoch == 0:
+        if (epoch + 1) % (max(self.num_epochs // 30, 1)) == 0 or epoch == 0:
             print(
                 f"epoch: {epoch+1}, training_loss = {training_loss:.4f}, val_loss = {val_loss:.4f}, lr = {self.step_lr_scheduler.get_last_lr()[0]:.4f}"
             )
@@ -206,9 +212,9 @@ class Train:
                 )
                 break
 
-        self.end_loop(epoch, training_loss, val_loss)
+        self.end_loop(training_loss, val_loss)
 
-    def end_loop(self, epoch, training_loss, val_loss):
+    def end_loop(self, training_loss, val_loss):
         print(
             f"Final training_loss = {training_loss:.4f}, val_loss = {val_loss:.4f}, last learning rate = {self.step_lr_scheduler.get_last_lr()[0]}"
         )
@@ -303,10 +309,11 @@ class Train:
 
 if __name__ == "__main__":
 
-    DATA_TYPE = "dist_mask"
+    DATA_TYPE = "lab_mask"
     MODEL_TYPE = "MLP"
 
     trainer = Train(data_type=DATA_TYPE, model_type=MODEL_TYPE)
     trainer.loop_nobatch()
 
+    # trainer = Train(data_type="lab_mask", model_type="tree")
     # trainer.decision_tree()
