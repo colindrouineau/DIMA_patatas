@@ -24,7 +24,21 @@ class VizImage:
     ):
         self.open_im = OpenImage(number_of_channels=number_of_channels)
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
-        
+        self.colors = np.array(
+            [
+                "#1f77b4",  # Blue
+                "#ff7f0e",  # Orange
+                "#2ca02c",  # Green
+                "#d62728",  # Red
+                "#9467bd",  # Purple
+                "#8c564b",  # Brown
+                "#e377c2",  # Pink
+                "#7f7f7f",  # Gray
+                "#bcbd22",  # Olive
+                "#17becf",  # Cyan
+            ]
+        )
+
     def show_channel(self, leaf, channel_number):
         """Shows image for chosen channel"""
         hsi_array = self.open_im.hsi_array(leaf)
@@ -49,9 +63,31 @@ class VizImage:
         plt.title(f"Spectogram of pixel ({x}, {y}) of leaf {leaf}")
         plt.show()
 
-    def show_lab_img(self, leaf):
+    def show_multiple_pixel_spec(self, leaf, pixels, labels):
+        """Shows spectrogram for chosen pixels and add corresponding labels"""
+        hsi_array = self.open_im.hsi_array(leaf)
+        channels = list(range(hsi_array.shape[2]))
+        for i, (pixel, label) in enumerate(zip(pixels, labels)):
+            spectre_xy = hsi_array[*pixel, :]
+            plt.plot(channels, spectre_xy, label=label, color=self.colors[i])
+        plt.xlabel("Channel")
+        plt.ylabel("Intensity")
+        plt.title(f"Spectograms on leaf {leaf}")
+        plt.legend()
+        plt.show()
+
+    def show_lab_img(self, leaf, red_pixel=None):
         """Shows image of lab labeling for a leaf"""
         lab_img = self.open_im.lab_array(leaf)
+        if red_pixel is not None:
+            x, y = red_pixel
+            [
+                lab_img[x, y],
+                lab_img[x + 1, y],
+                lab_img[x - 1, y],
+                lab_img[x, y + 1],
+                lab_img[x, y - 1],
+            ] = [100] * 5
         plt.imshow(lab_img)
         plt.title(f"Image of lab label of leaf {leaf}")
         plt.colorbar()
@@ -213,16 +249,20 @@ if __name__ == "__main__":
     im_viz = VizImage(number_of_channels=NUMBER_OF_CHANNELS)
 
     CHANNEL_NUMBER = 70
-    x, y = 253, 138
+    x, y = 213, 108
+    PIXELS = [(241, 110), (199, 123), (211, 120), (176, 92), (213, 108), (216, 86)]
+    LABELS = ["stem", "sick", "ring", "sane", "main_vein", "side_vein"]
+
+    im_viz.show_multiple_pixel_spec(LEAF_NAME, PIXELS, LABELS)
 
     # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER)
     # im_viz.show_pixel_spec(LEAF_NAME, x, y)
-    im_viz.show_lab_img(LEAF_NAME)
-    im_viz.show_dist_img(LEAF_NAME)
-
-    # im_viz.show_leaf_evol(1, red_pixel=(x, y))
-    # im_viz.show_pixel_evol(1, x, y)
-    # im_viz.overlap_img(LEAF_NAME, CHANNEL_NUMBER)
-    LEAF_NUMBER = 12
-    im_viz.show_leaf_evol(LEAF_NUMBER, red_pixel=(x, y), channel=CHANNEL_NUMBER)
-    im_viz.show_leaf_evol(LEAF_NUMBER, red_pixel=(x, y), channel=None)
+    # im_viz.show_lab_img(LEAF_NAME, red_pixel=(x, y))
+    # im_viz.show_dist_img(LEAF_NAME)
+#
+# # im_viz.show_leaf_evol(1, red_pixel=(x, y))
+# # im_viz.show_pixel_evol(1, x, y)
+# # im_viz.overlap_img(LEAF_NAME, CHANNEL_NUMBER)
+# LEAF_NUMBER = 12
+# im_viz.show_leaf_evol(LEAF_NUMBER, red_pixel=(x, y), channel=CHANNEL_NUMBER)
+# im_viz.show_leaf_evol(LEAF_NUMBER, red_pixel=(x, y), channel=None)

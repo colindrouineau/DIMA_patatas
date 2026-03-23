@@ -3,6 +3,7 @@ from sklearn import metrics
 from sklearn.manifold import TSNE
 import numpy as np
 import matplotlib
+import umap
 
 import matplotlib.pyplot as plt
 
@@ -14,47 +15,57 @@ class Clustering:
     """class to recognise key components of a leaf"""
 
     def __init__(self, n_clusters, leaf):
+        """initialises class instances useful for this class
+
+        :param str leaf: name of the leaf which clustering will be applied on"""
         self.data_format = DataFormatter()
         self.visualise = VizImage()
         self.leaf = leaf
         self.n_clusters = n_clusters
-        self.colors = np.array(
-            [
-                "#1f77b4",  # Blue
-                "#ff7f0e",  # Orange
-                "#2ca02c",  # Green
-                "#d62728",  # Red
-                "#9467bd",  # Purple
-                "#8c564b",  # Brown
-                "#e377c2",  # Pink
-                "#7f7f7f",  # Gray
-                "#bcbd22",  # Olive
-                "#17becf",  # Cyan
-            ]
-        )
 
     def load_data(self, channels=None):
-        self.points, _ = self.data_format.leaf_mask_data(leaf=self.leaf)
+        """Load all channels of the leaf pixels"""
+        self.points, self.real_labels = self.data_format.leaf_mask_data(leaf=self.leaf)
 
     def cluster(self, X):
+        """Runs kmeans clustering algorithm on X, with self.n_clusters,
+        and prints silhouette score using kmeans labels, and then real labels"""
         self.kmeans = KMeans(n_clusters=self.n_clusters, init="k-means++")
         self.kmeans.fit(X)
-        sil_score = metrics.silhouette_score(X, self.kmeans.labels_)
-
-        print(f"silhouette score is {sil_score}")
+        sil_score_kmeans = metrics.silhouette_score(X, self.kmeans.labels_)
+        if len(X) == len(self.real_labels):
+            sil_score_real = metrics.silhouette_score(X, self.real_labels)
+            print(f"silhouette score using real labels is {sil_score_real}")
+        print(f"silhouette score using clustering labels is {sil_score_kmeans}")
 
     def plot_clusters_on_leaf(self, labels=None):
+        """plots on the leaf compared prediction distribution using both real labels
+        and clustering labels.
+
+        :param list[int] | None labels: Predicted labels. By default, kmeans labels"""
         if labels is None:
             labels = self.kmeans.labels_
         y_real, y_pred = self.data_format.reconstitute_leaf(self.leaf, labels)
         self.visualise.plot_y_real_pred(y_real, y_pred)
 
     def load_tnse(self):
+        """Compute tnse on the loaded points and saves it as an attribute"""
         tsne = TSNE()
         self.embedded_data = tsne.fit_transform(self.points)
         print("tnse transformed data shape : ", self.embedded_data.shape)
 
-    def plot_tnse(self, labels=[0]):
+    def load_umap(self, n_neighbors=15, min_dist=0.1):
+        # Create UMAP instance with default parameters
+        reducer = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist)
+        # Fit and transform the data
+        # possible to use gpu. Not necessary for 1 leaf, but may be interesting for a larger dataset.
+        self.embedded_data = reducer.fit_transform(self.points, n_jobs=-1)
+
+    def plot_embedded(self, labels=[0]):
+        """Plot 2D embedded data, colored using labels
+
+        :param list[int] labels: labels used for coloring.
+        By default, use kmeans labels saved as attributes"""
         x = self.embedded_data[:, 0]
         y = self.embedded_data[:, 1]
         if (
@@ -65,11 +76,12 @@ class Clustering:
             labels = self.kmeans.labels_
         labels = np.array(labels)  # for mask later
 
+        # select each unique label and color matching points.
         for i, label in enumerate(list(set(labels))):
             # For each category, pick a color and marker
-            color = self.colors[i % 10]
+            color = self.visualise.colors[i % 10]
             mask = labels == label
-            plt.scatter(x[mask], y[mask], color=color, s=10)
+            plt.scatter(x[mask], y[mask], color=color, s=2, marker="+")
 
         plt.title("Clustering on tsne fit data")
         plt.show()
@@ -87,8 +99,8 @@ if __name__ == "__main__":
     cluster.plot_clusters_on_leaf()
 
     cluster.load_tnse()
-    cluster.plot_tnse()
+    cluster.plot_embedded()
 
     cluster.cluster(cluster.embedded_data)
-    cluster.plot_tnse()
+    cluster.plot_embedded()
     cluster.plot_clusters_on_leaf()

@@ -199,6 +199,6 @@ if __name__ == "__main__":
     # model_tester.tree_perf()
 
     LEAF = "foliolo7_enves_a10"
-    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/nn_binary/2026-03-20,23:17_MLP-on-lab_mask_1000epochs_lr:0.3_15features_balanced:False_.pth"
+    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/nn_binary/2026-03-20,23:35_MLP-on-lab_mask_1000epochs_lr:0.3_15features_balanced:False_.pth"
     MODEL_PATH_TREE = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/tree/2026-03-20,10:44_tree_max-depth:4_channels:[64,68,65]_balanced:False_.joblib"
     model_tester.analyse_one_leaf(LEAF, MODEL_PATH_MLP, round=False)
