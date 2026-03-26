@@ -41,7 +41,7 @@ class DataFormatter:
         X_leaf_pixels : list of arrays
             The spectograms for each pixel
         Y_leaf_pixels : list
-            The label for each pixel
+            The actual label for each pixel
         """
         hsi_array = self.open_im.hsi_array(leaf)
         if self.data_type == "lab_mask":
@@ -53,7 +53,7 @@ class DataFormatter:
             mask_lab = (
                 lab_arr > -1
             )  # We take all, assuming hsi filter is enough, since the sick pixels have the same value than pixels outside the leaf
-        
+
         mask_hsi = hsi_array.max(axis=-1) > 0.01
         leaf_mask = mask_hsi & mask_lab
 
@@ -67,40 +67,50 @@ class DataFormatter:
 
         return x_leaf_pixels, y_leaf_labels
 
-    def reconstitute_leaf(self, leaf, y_pred):
+    def reconstitute_leaf(self, leaf, arr):
         """
-        Reconstitutes predicted label array to initial leaf geometry
+        Reconstitutes one array of dimension 1 or 2 that was filtered through leaf_mask to initial leaf geometry.
+        It can be either labels or hsi_array.
 
         Returns
         -------
-        y_real, y_pred : (np.array, np.array)
-            images of real and predicted label
+        y_real, to_leaf_form : (np.array, np.array)
+            images of real label and reconstituted leaf
         """
         y_real, leaf_mask = self.leaf_mask_data(leaf, return_mask=True)
-        # check if the labeling is continuous or 0,1
-
-        if self.data_type == "lab_mask":
-            category = list(np.unique(y_pred).astype(int)) == [0, 1]
-            if category:
-                # put y_pred to 0, 200, 255 format like y_real
-                y_pred = np.where(y_pred == 1, 200, 255)
-            else:
-                # 0 = out of leaf. Fill the whole possible range of values ([0,255])
-                min_value = 20
-                y_pred = y_pred / np.max(y_pred) * (255 - min_value) + min_value
 
         # track mask transformation :
         height, width = leaf_mask.shape
         position_arr = np.array([[(x, y) for y in range(width)] for x in range(height)])
         # becomes a 1D arr, but we tracked position transformations
         masked_position_arr = position_arr[leaf_mask]
-        # reconstitute 2 D array
-        y_pred_leaf = np.zeros((height, width))
-        # add missing values
-        for label, (x, y) in zip(y_pred, masked_position_arr):
-            y_pred_leaf[x, y] = label
 
-        return y_real, y_pred_leaf
+        dimension = len(arr.shape)
+        # for lab_mask label
+        # check if the labeling is continuous or 0,1
+        if dimension == 1 and self.data_type == "lab_mask":
+            category = list(np.unique(arr).astype(int)) == [0, 1]
+            if category:
+                # put y_pred to 0, 200, 255 format like y_real
+                arr = np.where(arr == 1, 200, 255)
+            else:
+                # 0 = out of leaf. Fill the whole possible range of values ([0,255])
+                min_value = 20
+                arr = arr / np.max(arr) * (255 - min_value) + min_value
+            to_leaf_form = np.zeros((height, width))
+        if dimension == 2:
+            bands = arr.shape[1]
+            to_leaf_form = np.zeros((height, width, bands))
+
+        # reconstitute 2 or 3 D array
+        # add missing values
+        for element, (x, y) in zip(arr, masked_position_arr):
+            if dimension == 1:
+                to_leaf_form[x, y] = element
+            if dimension == 2:
+                to_leaf_form[x, y, :] = element
+
+        return y_real, to_leaf_form
 
     def load_data(self, channels=None, leaf_numbers=None):
         """Load data.
@@ -201,7 +211,7 @@ if __name__ == "__main__":
     data_format = DataFormatter(NUMBER_OF_CHANNELS)
     X, y = data_format.leaf_mask_data(LEAF_NAME)
     # taking y_real as test y_pred
-    y_real, y_pred = data_format.reconstitute_leaf(LEAF_NAME, y_pred=y)
+    y_real, y_pred = data_format.reconstitute_leaf(LEAF_NAME, arr=y)
 
     from viz_image import VizImage
 

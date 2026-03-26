@@ -4,6 +4,7 @@ import torch
 from sklearn import metrics
 from format_data import DataFormatter
 from viz_image import VizImage
+from data_analysis import DataAnalyse
 from models import BinPixNN, DistPixNN
 from joblib import load
 import utils
@@ -80,16 +81,21 @@ class ModelTester:
             if model_name.split(".")[-1] != "pth":
                 print(f"{model_name} is not a valid model name")
                 continue
-            number_of_channels = utils.get_nfeatures_from_name(model_name)
-            # To load the right channels :
-            self.data_formatter.open_im.number_of_channels = number_of_channels
-            self.data_formatter.number_of_channels = number_of_channels
-            x_set, y_set = self.data_formatter.load_data(leaf_numbers=self.test_leaves)
-            X_test, y_test = self.data_formatter.scale_and_split_data(x_set, y_set)
+            X_test, y_test, number_of_channels, _ = self.open_test_data(model_name)
+
             model_path = os.path.join(models_dir, model_name)
             self.load_nn_and_perf(
                 number_of_channels, model_path, model_name, X_test, y_test
             )
+
+    def open_test_data(self, model_name):
+        number_of_channels = utils.get_nfeatures_from_name(model_name)
+        # To load the right channels :
+        self.data_formatter.open_im.number_of_channels = number_of_channels
+        self.data_formatter.number_of_channels = number_of_channels
+        original_X_test, y_set = self.data_formatter.load_data(leaf_numbers=self.test_leaves)
+        X_test, y_test = self.data_formatter.scale_and_split_data(np.copy(original_X_test), y_set)
+        return X_test, y_test, number_of_channels, original_X_test
 
     def load_nn_and_perf(
         self, number_of_channels, model_path, model_name, X_test, y_test
@@ -188,6 +194,22 @@ class ModelTester:
                 y_leaf, y_pred, title=leaf + ", model : tree"
             )
 
+    def compare_class_spectra(self, model_path):
+        """Opens data and calls data_analysis method `plot_spectra`,
+        displaying channel intensity distribution for each class (TP, TN, FP, FN)"""
+        model_name = model_path.split("/")[-1]
+        X_test, y_test, number_of_channels, X_raw = self.open_test_data(model_name)
+        y_pred = self.load_nn_and_perf(number_of_channels, model_path, model_name, X_test, y_test)
+        y_test = y_test.to("cpu").numpy().flatten()
+        y_test = y_test.astype(bool)
+        y_pred = np.where(y_pred <= self.threshold, 0, 1).astype(bool)
+        TN = X_raw[~y_pred & ~y_test]
+        TP = X_raw[y_pred & y_test]
+        FP = X_raw[y_pred & ~y_test]
+        FN = X_raw[~y_pred & y_test]
+        data_analyser = DataAnalyse(number_of_channels=number_of_channels)
+        data_analyser.plot_spectra([TN, TP, FP, FN], ["TN", "TP", "FP", "FN"])
+
 
 if __name__ == "__main__":
     DATA_TYPE = "lab_mask"
@@ -199,6 +221,7 @@ if __name__ == "__main__":
     # model_tester.tree_perf()
 
     LEAF = "foliolo7_enves_a10"
-    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/nn_binary/2026-03-20,23:35_MLP-on-lab_mask_1000epochs_lr:0.3_15features_balanced:False_.pth"
+    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/model_backup/nn_binary/2026-03-23,16:47_MLP-on-lab_mask_1000epochs_lr:0.3_111features_balanced:False_.pth"
     MODEL_PATH_TREE = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/tree/2026-03-20,10:44_tree_max-depth:4_channels:[64,68,65]_balanced:False_.joblib"
-    model_tester.analyse_one_leaf(LEAF, MODEL_PATH_MLP, round=False)
+    # model_tester.analyse_one_leaf(LEAF, MODEL_PATH_MLP, round=False)
+    model_tester.compare_class_spectra(MODEL_PATH_MLP)

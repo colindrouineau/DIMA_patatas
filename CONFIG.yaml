@@ -5,7 +5,7 @@ PATH :
 
 DATA :
   TOTAL_N_CHANNELS : 111
-  NUMBER_OF_CHANNELS : 15 # "all"
+  NUMBER_OF_CHANNELS : "all"
   BALANCE : False # proportion of sick pixels after transformation. no balance : False
   TEST_SIZE : 0.15 # for random train/test split
   TEST_LEAVES : [2, 7, 12]

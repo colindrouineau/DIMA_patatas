@@ -16,7 +16,7 @@ class NeuralNetCommon:
         pass
 
     @classmethod  # later probably should make it an object method
-    def save_nn(cls, file_name, state_dict, mode):
+    def save_nn(cls, model, file_name, state_dict, mode):
         # save only state dict
         nn_backup_path = os.path.join(
             utils.load_config("PATH", "DATA_DIR"), "..", "model_backup", "nn_" + mode
@@ -28,6 +28,22 @@ class NeuralNetCommon:
             file_name,
         )
         torch.save(state_dict, file)
+        print(f"Model dict saved as {file}")
+        
+        nn_whole_model_backup_path = os.path.join(
+            utils.load_config("PATH", "DATA_DIR"),
+            "..",
+            "whole_model_backup",
+            "nn_" + mode,
+        )
+        os.makedirs(nn_whole_model_backup_path, exist_ok=True)
+        # Potentially make "MLP" a var
+        file = os.path.join(
+            nn_whole_model_backup_path,
+            file_name,
+        )
+        torch.save(model, file)
+
         # print(model.state_dict())
         print(f"Model saved as {file}")
 
@@ -63,7 +79,7 @@ class BinPixNN(nn.Module):
 
     def save_nn(self, best_model_state, file_name):
         """Saves model state_dict. best_model_state is an attribute of EarlyStopping class instance."""
-        NeuralNetCommon.save_nn(file_name, best_model_state, mode="binary")
+        NeuralNetCommon.save_nn(self, file_name, best_model_state, mode="binary")
 
 
 class DistPixNN(nn.Module):

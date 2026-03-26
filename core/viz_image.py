@@ -5,13 +5,30 @@ import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib import pyplot as plt
 import matplotlib.animation as animation
+from matplotlib.widgets import Slider
 
 from PIL import Image
 import numpy as np
 import spectral as sp1
 
 from open_image import OpenImage
+from data_processing import ImageCleaner
 import utils
+
+COLORS = np.array(
+    [
+        "#1f77b4",  # Blue
+        "#ff7f0e",  # Orange
+        "#2ca02c",  # Green
+        "#d62728",  # Red
+        "#9467bd",  # Purple
+        "#8c564b",  # Brown
+        "#e377c2",  # Pink
+        "#7f7f7f",  # Gray
+        "#bcbd22",  # Olive
+        "#17becf",  # Cyan
+    ]
+)
 
 
 class VizImage:
@@ -24,30 +41,22 @@ class VizImage:
     ):
         self.open_im = OpenImage(number_of_channels=number_of_channels)
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
-        self.colors = np.array(
-            [
-                "#1f77b4",  # Blue
-                "#ff7f0e",  # Orange
-                "#2ca02c",  # Green
-                "#d62728",  # Red
-                "#9467bd",  # Purple
-                "#8c564b",  # Brown
-                "#e377c2",  # Pink
-                "#7f7f7f",  # Gray
-                "#bcbd22",  # Olive
-                "#17becf",  # Cyan
-            ]
-        )
+        self.data_process = ImageCleaner()
 
-    def show_channel(self, leaf, channel_number):
+    def show_channel(self, leaf, channel_number, normalise=False, threshold=None):
         """Shows image for chosen channel"""
-        hsi_array = self.open_im.hsi_array(leaf)
-        if channel_number >= hsi_array.shape[2]:
+        hsi_arr = self.open_im.hsi_array(leaf)
+        if channel_number >= hsi_arr.shape[2]:
             print(
-                f"You try to print channel n°{channel_number} when there are only {hsi_array.shape[2]} channels. Showing last channel instead."
+                f"You try to print channel n°{channel_number} when there are only {hsi_arr.shape[2]} channels. Showing last channel instead."
             )
-            channel_number = hsi_array.shape[2] - 1
-        im_channel = hsi_array[:, :, channel_number]
+            channel_number = hsi_arr.shape[2] - 1
+        if normalise:  # apply normalise to all pixels
+            hsi_arr = self.data_process.normalise_image_spectra(leaf)
+        if threshold is None:
+            im_channel = hsi_arr[:, :, channel_number]
+        else:
+            im_channel = np.where(np.min(hsi_arr, axis=2) < threshold, 2, 1)
         plt.imshow(im_channel)
         plt.title(f"Image of Channel {channel_number} of leaf {leaf}")
         plt.colorbar()
@@ -63,13 +72,15 @@ class VizImage:
         plt.title(f"Spectogram of pixel ({x}, {y}) of leaf {leaf}")
         plt.show()
 
-    def show_multiple_pixel_spec(self, leaf, pixels, labels):
+    def show_multiple_pixel_spec(self, leaf, pixels, labels, normalise=False):
         """Shows spectrogram for chosen pixels and add corresponding labels"""
-        hsi_array = self.open_im.hsi_array(leaf)
-        channels = list(range(hsi_array.shape[2]))
+        hsi_arr = self.open_im.hsi_array(leaf)
+        if normalise:  # apply normalise to all pixels
+            hsi_arr = self.data_process.normalise_image(leaf, hsi_arr)
+        channels = list(range(hsi_arr.shape[2]))
         for i, (pixel, label) in enumerate(zip(pixels, labels)):
-            spectre_xy = hsi_array[*pixel, :]
-            plt.plot(channels, spectre_xy, label=label, color=self.colors[i])
+            spectre_xy = hsi_arr[*pixel, :]
+            plt.plot(channels, spectre_xy, label=label, color=COLORS[i])
         plt.xlabel("Channel")
         plt.ylabel("Intensity")
         plt.title(f"Spectograms on leaf {leaf}")
@@ -106,83 +117,90 @@ class VizImage:
         leaf_number: int,
         side="enves",
         red_pixel: tuple | None = None,
-        channel: int | None = None,
+        channel: int = 70,
     ):
         """Show and save animation of the temporal evolution of a given leaf
 
         :param tuple red_pixel: if not None, position of a pixel that will be in a different colour for all the animation
-        :param None | int channel: if None, shows lab image evolution.
+        :param int channel: shows lab image evolution.
         Else, it must be the channel number and this function shows the HSI evolution for this channel.
         """
-        folder = "Lab_Feb2025_Mask" if channel is None else "HSI"
-        path_to_images = os.path.join(
-            self.data_dir, folder, f"foliolo{leaf_number}", side
+        hsi_path = os.path.join(self.data_dir, "HSI", f"foliolo{leaf_number}", side)
+        paths = utils.sort_images(glob.glob(f"{hsi_path}/*.hdr"))
+        hsi_images = [
+            np.array(sp1.envi.open(file).asarray())[:, :, channel] for file in paths
+        ]
+
+        lab_mask_path = os.path.join(
+            self.data_dir, "Lab_Feb2025_Mask", f"foliolo{leaf_number}", side
         )
-        # Load images
-        if channel is None:
-            paths = utils.sort_images(glob.glob(f"{path_to_images}/*.png"))
-            images = [np.array(Image.open(file)) for file in paths]
-        else:
-            paths = utils.sort_images(glob.glob(f"{path_to_images}/*.hdr"))
-            images = [
-                np.array(sp1.envi.open(file).asarray())[:, :, channel] for file in paths
-            ]
+        paths = utils.sort_images(glob.glob(f"{lab_mask_path}/*.png"))
+        lab_images = [np.array(Image.open(file)) for file in paths]
 
         if red_pixel is not None:
             x, y = red_pixel
-            for image in images:
+            for image in hsi_images:
                 [
                     image[x, y],
                     image[x + 1, y],
                     image[x - 1, y],
                     image[x, y + 1],
                     image[x, y - 1],
-                ] = (
-                    [100] * 5 if channel is None else [1] * 5
-                )
+                ] = [1] * 5
         # select time of the image from the path
         time_states = [
             path.split("/")[-1].split(".")[0].split("_")[-1] for path in paths
         ]
 
-        # Create figure
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.axis("off")
-        # Initialize with the first image
-        im = ax.imshow(images[0])
+        fig, axs = plt.subplots(1, 2, figsize=(12, 6))
+        plt.subplots_adjust(bottom=0.2)  # Make space for the slider
 
-        # Animation function
-        def update(frame):
-            im.set_array(images[frame])
-            ax.set_title(
-                f"Evolution of leaf {folder.split("_")[0]}_{side}_fol{leaf_number} ; time_state = {time_states[frame]} ; pix = {red_pixel}"
-            )
+        fig.suptitle(f"fol{leaf_number} at time: {time_states[0]}")
+        # Display the first image on both subplots (or adapt as needed)
+        im1 = axs[0].imshow(hsi_images[0], cmap="viridis")
+        axs[0].axis("off")
+        axs[0].set_title(f"HSI. Pix: {red_pixel}")
 
-        # Create animation
-        ani = animation.FuncAnimation(
-            fig,
-            update,
-            frames=len(images),
-            interval=750,
-            blit=False,
-            repeat_delay=2000,
+        im2 = axs[1].imshow(lab_images[0], cmap="viridis")
+        axs[1].axis("off")
+        axs[1].set_title("Lab mask")
+
+        # Create a slider axis
+        ax_slider = plt.axes([0.2, 0.1, 0.6, 0.03])
+        slider = Slider(
+            ax_slider, "Frame", 0, len(lab_images) - 1, valinit=0, valstep=1
         )
-        # Save or show
-        os.makedirs(
-            os.path.join(self.data_dir, "..", "viz", "animations"), exist_ok=True
-        )
-        ani.save(
-            os.path.join(
-                self.data_dir,
-                "..",
-                "viz",
-                "animations",
-                f"{folder.split("_")[0]}_{side}_fol{leaf_number}_ani.gif",
-            ),
-            writer="pillow",
-            fps=1,
-        )
+
+        current_frame = 0
+
+        # Update function for the slider
+        def update(val):
+            nonlocal current_frame
+            current_frame = int(slider.val)
+            fig.suptitle(f"fol{leaf_number} at time: {time_states[current_frame]}")
+            im1.set_array(hsi_images[current_frame])
+            im2.set_array(lab_images[current_frame])
+            fig.canvas.draw_idle()
+
+        # Function to handle key presses
+        def on_key(event):
+            nonlocal current_frame
+            if event.key == "right":
+                current_frame = min(current_frame + 1, len(lab_images) - 1)
+            elif event.key == "left":
+                current_frame = max(current_frame - 1, 0)
+            else:
+                return  # Ignore other keys
+
+            # Update slider and redraw
+            slider.set_val(current_frame)
+            update(current_frame)
+
+        # Connect the key press event
+        fig.canvas.mpl_connect("key_press_event", on_key)
+
+        # Connect the slider to the update function
+        slider.on_changed(update)
         plt.show()
 
     def show_pixel_evol(self, leaf_number: int, x: int, y: int, side="enves"):
@@ -241,28 +259,123 @@ class VizImage:
 
         plt.show()
 
+    def plot_class_spectra(self, y_real, y_pred, title=None):
+        """plots on the same figure the average and envelope spectra for
+        - False negative
+        - False positive
+        - True positive
+        - True negative
+        """
+
+    def spectrogram_interactive_mapping(self, leaf, normalise=False):
+        hsi_arr = self.open_im.hsi_array(leaf)
+        if normalise:  # apply normalise to all pixels
+            hsi_arr = self.data_process.normalise_image(leaf, hsi_arr)
+        # Select a channel to display
+        selected_channel = 80  # Example: first channel
+        channel_image = hsi_arr[:, :, selected_channel]
+
+        # Create figure and subplots
+        fig, (ax_image, ax_spectrum) = plt.subplots(1, 2, figsize=(10, 5))
+        plt.subplots_adjust(wspace=0.4)
+
+        # Display the selected channel
+        im = ax_image.imshow(channel_image)
+        ax_image.set_title(f"Channel {selected_channel} of leaf {leaf}")
+
+        # Initialize the spectrum subplot
+        (line,) = ax_spectrum.plot([], [])
+        ax_spectrum.set_title("Pixel Spectrum")
+        y_lim = (-1, 1) if normalise else (0, 0.7)
+        ax_spectrum.set_ylim(y_lim)
+        ax_spectrum.set_xlabel("channel")
+        ax_spectrum.set_ylabel("intensity")
+
+        # Store all spectra and their corresponding lines
+        spectra_lines = []
+        spectra_data = []
+        crosses = []
+
+        # Function to handle mouse clicks
+        def on_click(event):
+            nonlocal spectra_lines, spectra_data, crosses
+            if event.inaxes != ax_image:
+                return  # Ignore clicks outside the image subplot
+
+                # Right click: Reset the spectrum subplot
+            if event.button == 3:  # Right mouse button
+                for line in spectra_lines:
+                    line.remove()
+                for cross in crosses:
+                    for part in cross:
+                        part.remove()
+                spectra_lines = []
+                spectra_data = []
+                crosses = []
+                ax_spectrum.set_title("Pixel Spectrum")
+                fig.canvas.draw()
+                return
+
+            # Get the clicked pixel coordinates (rounded to nearest integer)
+            x, y = int(event.xdata + 0.5), int(event.ydata + 0.5)
+
+            # Ensure the click is within the image bounds
+            if 0 <= x < hsi_arr.shape[1] and 0 <= y < hsi_arr.shape[0]:
+                spectrum = hsi_arr[y, x, :]
+                spectra_data.append((x, y, spectrum))
+                color = COLORS[len(spectra_lines) % 10]
+                # Plot the new spectrum
+                (line,) = ax_spectrum.plot(
+                    np.arange(len(spectrum)),
+                    spectrum,
+                    color=color,
+                    label=f"Pixel ({x}, {y})",
+                )
+                spectra_lines.append(line)
+
+                # Draw a cross on the image at (x, y) with the same color
+                cross_horizontal = ax_image.plot(
+                    [x - 3, x + 3], [y, y], color=color, linewidth=1.5
+                )
+                cross_vertical = ax_image.plot(
+                    [x, x], [y - 3, y + 3], color=color, linewidth=1.5
+                )
+                crosses.append([cross_horizontal[0], cross_vertical[0]])
+
+                ax_spectrum.legend()
+                ax_spectrum.relim()
+                ax_spectrum.autoscale_view()
+                ax_spectrum.set_title(f"Pixel Spectra (Last: {x}, {y})")
+                fig.canvas.draw()
+
+        # Connect the click event
+        fig.canvas.mpl_connect("button_press_event", on_click)
+
+        plt.show()
+
 
 if __name__ == "__main__":
-    LEAF_NAME = "foliolo3_enves_a6"
+    LEAF_NAME = "foliolo7_enves_a10"
     NUMBER_OF_CHANNELS = -1
 
     im_viz = VizImage(number_of_channels=NUMBER_OF_CHANNELS)
 
-    CHANNEL_NUMBER = 70
+    CHANNEL_NUMBER = 73
     x, y = 213, 108
     PIXELS = [(241, 110), (199, 123), (211, 120), (176, 92), (213, 108), (216, 86)]
     LABELS = ["stem", "sick", "ring", "sane", "main_vein", "side_vein"]
 
-    im_viz.show_multiple_pixel_spec(LEAF_NAME, PIXELS, LABELS)
+    # im_viz.spectrogram_interactive_mapping(LEAF_NAME, normalise=True)
 
-    # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER)
+    # im_viz.show_multiple_pixel_spec(LEAF_NAME, PIXELS, LABELS, normalise=True)
+    im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER, normalise=True, threshold=None)
+    im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER, normalise=True, threshold=0.5)
     # im_viz.show_pixel_spec(LEAF_NAME, x, y)
     # im_viz.show_lab_img(LEAF_NAME, red_pixel=(x, y))
     # im_viz.show_dist_img(LEAF_NAME)
-#
-# # im_viz.show_leaf_evol(1, red_pixel=(x, y))
-# # im_viz.show_pixel_evol(1, x, y)
-# # im_viz.overlap_img(LEAF_NAME, CHANNEL_NUMBER)
-# LEAF_NUMBER = 12
-# im_viz.show_leaf_evol(LEAF_NUMBER, red_pixel=(x, y), channel=CHANNEL_NUMBER)
-# im_viz.show_leaf_evol(LEAF_NUMBER, red_pixel=(x, y), channel=None)
+    #
+    # # im_viz.show_leaf_evol(1, red_pixel=(x, y))
+    # # im_viz.show_pixel_evol(1, x, y)
+    # # im_viz.overlap_img(LEAF_NAME, CHANNEL_NUMBER)
+    LEAF_NUMBER = 12
+    # im_viz.show_leaf_evol(LEAF_NUMBER, red_pixel=(x, y), channel=CHANNEL_NUMBER)
