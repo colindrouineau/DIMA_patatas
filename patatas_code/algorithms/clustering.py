@@ -8,8 +8,9 @@ import umap
 import matplotlib.pyplot as plt
 
 from format_data import DataFormatter
-from viz_image import VizImage, COLORS
+from patatas_code.data.viz_image import VizImage, COLORS
 from data_processing import ProcessImage
+from data_analysis import DataAnalyse
 
 
 class Clustering:
@@ -111,7 +112,7 @@ class Clustering:
         plt.show()
 
     def transform_points(self):
-        self.points = ProcessImage().dataset_important(self.points)
+        self.points = DataAnalyse().dataset_important(self.points)
 
 
 if __name__ == "__main__":

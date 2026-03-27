@@ -8,13 +8,13 @@ DATA :
   NUMBER_OF_CHANNELS : 111
   BALANCE : False # proportion of sick pixels after transformation. no balance : False
   TEST_SIZE : 0.15 # for random train/test split
-  TEST_LEAVES : [7, 1, 3, 12]
-  VALIDATION_LEAVES : [8, 11, 4, 2]
+  TEST_LEAVES : [1, 3, 7, 12]
+  VALIDATION_LEAVES : [2, 4, 8, 11]
   NUMBER_OF_LEAVES : 17
 
 TRAINING_CHOICE :
-  DATA_TYPE : "lab_mask"  # or "dist_mask"
-  MODEL_TYPE : "MLP"  # or "tree"
+  DATA_TYPE : "ring_mask"  #"lab_mask"  # or "dist_mask"
+  MODEL_TYPE : "RANDOM_FOREST"  # "MLP"  # or "tree"
 
 TRAINING_INFO :
   DEVICE : "cuda"  # or "cpu"
@@ -42,5 +42,10 @@ TRAINING_INFO :
       FACTOR : 0.5
       PATIENCE : 20
       THRESHOLD : 0.1
+  
+  RING_MASK :
+    RANDOM_FOREST :
+      CHANNELS : [0,1,2,3,4,65,64,5,66,63,67,62,68,6,69,61,70,7,71,27,28,60,72,26,29]
+      N_ESTIMATORS : 100
 
   

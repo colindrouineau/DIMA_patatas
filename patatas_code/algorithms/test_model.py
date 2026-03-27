@@ -2,6 +2,8 @@ import os
 import numpy as np
 import torch
 from sklearn import metrics
+import sys
+sys.path.append("/home/colind/work/Mines/TR_DIMA/DIMA_code/patatas_code/data")
 from format_data import DataFormatter
 from viz_image import VizImage
 from data_analysis import DataAnalyse
@@ -23,6 +25,7 @@ class ModelTester:
             "TRAINING_INFO", "LAB_MASK", "MLP", "LABEL_THRESHOLD"
         )
         self.data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
+        self.model_type = utils.load_config("TRAINING_CHOICE", "MODEL_TYPE")
 
     def performance(self, y_test, y_predicted):
         if self.data_type == "lab_mask":
@@ -131,6 +134,22 @@ class ModelTester:
             print(e)
         finally:
             return y_predicted
+        
+    def one_forest_perf(self, model_name, X_test, y_test):
+        models_dir = os.path.join(self.data_dir, "..", "model_backup", "rd_forest")
+        model_path = os.path.join(models_dir, model_name)
+        # Load the saved model
+        loaded_model_joblib = load(model_path)
+        try:
+            print(f"performance of model {model_name} :")
+            y_pred = loaded_model_joblib.predict(X_test)
+            y_test = y_test.flatten()
+            y_pred = y_pred.flatten()
+            print("Classification Report:\n", metrics.classification_report(y_test, y_pred))
+        except Exception as e:
+            print(e)
+        finally:
+            return y_pred
 
     def analyse_one_leaf(self, leaf, model_path, round=False):
         """
@@ -155,17 +174,26 @@ class ModelTester:
             )
 
         if model_extension == "joblib":
-            channels = utils.get_channels_from_name(model_name)
+            channels = utils.load_config(
+            "TRAINING_INFO", self.data_type.upper(), self.model_type.upper(), "CHANNELS"
+        )
             X_test, y_test = self.data_formatter.leaf_mask_data(leaf)
             X_test, y_test = self.data_formatter.scale_and_split_data(
                 X_test, y_test, scale=False, to_tensor=False
             )
             X_test = X_test[:, channels]
-            y_pred = self.one_tree_perf(model_name, X_test, y_test)
-            y_leaf, y_pred = self.data_formatter.reconstitute_leaf(leaf, y_pred)
-            self.visualise.plot_y_real_pred(
-                y_leaf, y_pred, title=leaf + ", model : tree"
-            )
+            if self.model_type == "tree":
+                y_pred = self.one_tree_perf(model_name, X_test, y_test)
+                y_leaf, y_pred = self.data_formatter.reconstitute_leaf(leaf, y_pred)
+                self.visualise.plot_y_real_pred(
+                    y_leaf, y_pred, title=leaf + ", model : tree"
+                )
+            if self.model_type == "RANDOM_FOREST":
+                y_pred = self.one_forest_perf(model_name, X_test, y_test)
+                y_leaf, y_pred = self.data_formatter.reconstitute_leaf(leaf, y_pred)
+                self.visualise.plot_y_real_pred(
+                    y_leaf, y_pred, title=leaf + ", model : random forest"
+                )
 
     def compare_class_spectra(self, model_path):
         """Opens data and calls data_analysis method `plot_spectra`,
@@ -195,5 +223,7 @@ if __name__ == "__main__":
     LEAF = "foliolo7_enves_a10"
     MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/model_backup/nn_binary/2026-03-23,16:47_MLP-on-lab_mask_1000epochs_lr:0.3_111features_balanced:False_.pth"
     MODEL_PATH_TREE = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/tree/2026-03-20,10:44_tree_max-depth:4_channels:[64,68,65]_balanced:False_.joblib"
-    # model_tester.analyse_one_leaf(LEAF, MODEL_PATH_MLP, round=False)
-    model_tester.compare_class_spectra(MODEL_PATH_MLP)
+    # model_tester.compare_class_spectra(MODEL_PATH_MLP)
+    MODEL_PATH_FOREST = "/home/colind/work/Mines/TR_DIMA/DIMA_code/model_backup/rd_forest/2026-03-27,16:57_rdforest_nestimators:100_balanced:False_.joblib"
+    model_tester.analyse_one_leaf(LEAF, MODEL_PATH_FOREST, round=False)
+    

@@ -10,10 +10,11 @@ from torch.utils.tensorboard import SummaryWriter
 from sklearnex import (
     patch_sklearn,
 )  # it should enable GPU for sklearn but doesn't seem to work
+from sklearn.metrics import classification_report
 
-from open_image import OpenImage
-from format_data import DataFormatter
-from models import BinPixNN, DecisionTree, DistPixNN
+from data.open_image import OpenImage
+from data.format_data import DataFormatter
+from models import BinPixNN, DecisionTree, DistPixNN, RandomForest
 from test_model import ModelTester
 import utils
 import train_utils
@@ -33,6 +34,7 @@ class Train:
         :param str model_type: by default, "MLP". Other possibilities are "CNN"
 
         """
+        self.date = datetime.today().strftime("%Y-%m-%d,%H:%M")
         self.number_of_channels = utils.load_config("DATA", "NUMBER_OF_CHANNELS")
         self.model_type = utils.load_config("TRAINING_CHOICE", "MODEL_TYPE")
         self.data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
@@ -58,7 +60,7 @@ class Train:
         training_info = utils.load_config(
             "TRAINING_INFO", self.data_type.upper(), self.model_type.upper()
         )
-        self.device = torch.device(training_info["DEVICE"])
+        self.device = torch.device(utils.load_config("TRAINING_INFO", "DEVICE"))
         # Some models don't need a learning rate
         if "LEARNING_RATE" in training_info:
             self.learning_rate = training_info["LEARNING_RATE"]
@@ -70,6 +72,8 @@ class Train:
             self.max_depth = training_info["MAX_DEPTH"]
         if "CHANNELS" in training_info:
             self.tree_channels = training_info["CHANNELS"]
+        if "N_ESTIMATORS" in training_info:
+            self.n_estimators = training_info["N_ESTIMATORS"]
 
     def define_mlp_bin_functions(self):
         training_info = utils.load_config("TRAINING_INFO", "LAB_MASK", "MLP")
@@ -116,7 +120,6 @@ class Train:
         -------
         X_train, y_train, X_val, y_val, date
         """
-        self.date = datetime.today().strftime("%Y-%m-%d,%H:%M")
         exp_path = os.path.join(
             self.tb_path, f"{self.model_type}-{self.data_type}", self.date
         )
@@ -250,8 +253,7 @@ class Train:
 
     def decision_tree(self):
         """decision tree training"""
-        date = datetime.today().strftime("%Y-%m-%d,%H:%M")
-        exp_path = os.path.join(self.tb_path, "tree", "tree_" + date)
+        exp_path = os.path.join(self.tb_path, "tree", "tree_" + self.date)
         os.makedirs(exp_path, exist_ok=True)
         self.writer = SummaryWriter(exp_path)
 
@@ -266,7 +268,7 @@ class Train:
         clf = DecisionTree(max_depth=self.max_depth, channels=self.tree_channels)
         # Train Decision Tree Classifer
         clf = clf.fit(X_train, y_train)
-        file_name = f"{date}_tree_max-depth:{self.max_depth}_channels:{str(self.tree_channels).replace(" ", "")}_balanced:{self.balance}_.joblib"
+        file_name = f"{self.date}_tree_max-depth:{self.max_depth}_channels:{str(self.tree_channels).replace(" ", "")}_balanced:{self.balance}_.joblib"
         clf.save_tree(file_name)
         self.tree_results(clf)
 
@@ -293,11 +295,42 @@ class Train:
         self.writer.add_hparams(hparam_dict=hparam_dict, metric_dict=metrics_dictionary)
         self.writer.close()
 
-        # clf.viz_decision_tree()
+    def random_forest(self):
+        channels = utils.load_config(
+            "TRAINING_INFO", "RING_MASK", "RANDOM_FOREST", "CHANNELS"
+        )
+
+        x_set, y_set = self.data_formatter.load_data(
+            channels=channels, leaf_numbers=self.train_leave_numbers
+        )
+        X_train, y_train = self.data_formatter.scale_and_split_data(
+            x_set, y_set, to_tensor=False, scale=False
+        )
+        rf_classifier = RandomForest(n_estimators=self.n_estimators)
+        rf_classifier.fit(X_train, y_train)
+        self.random_forest_results(rf_classifier)
+        file_name = f"{self.date}_rdforest_nestimators:{self.n_estimators}_balanced:{self.balance}_.joblib"
+        rf_classifier.save_forest(file_name)
+
+    def random_forest_results(self, rf_classifier):
+        channels = utils.load_config(
+            "TRAINING_INFO", "RING_MASK", "RANDOM_FOREST", "CHANNELS"
+        )
+
+        x_set, y_set = self.data_formatter.load_data(
+            channels=channels, leaf_numbers=self.test_leaves
+        )
+        X_test, y_test = self.data_formatter.scale_and_split_data(
+            x_set, y_set, to_tensor=False, scale=False
+        )
+        y_pred = rf_classifier.predict(X_test)
+        classification_rep = classification_report(y_test, y_pred)
+
+        print("Classification Report:\n", classification_rep)
 
 
 if __name__ == "__main__":
 
     trainer = Train()
-    trainer.loop_nobatch()
-
+    trainer.random_forest()
+    # trainer.loop_nobatch()
