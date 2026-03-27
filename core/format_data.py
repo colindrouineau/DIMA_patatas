@@ -13,20 +13,15 @@ class DataFormatter:
     class to format data for training
     """
 
-    def __init__(
-        self,
-        device=None,
-        number_of_channels: int = utils.load_config("DATA", "NUMBER_OF_CHANNELS"),
-        data_type="lab_mask",
-    ):
+    def __init__(self):
         """
         :param str data_type: labeling data type
         """
-        self.open_im = OpenImage(number_of_channels=number_of_channels)
-        self.number_of_channels = number_of_channels
+        self.open_im = OpenImage()
+        self.number_of_channels = utils.load_config("DATA", "NUMBER_OF_CHANNELS")
         self.balance = utils.load_config("DATA", "BALANCE")
-        self.device = device
-        self.data_type = data_type
+        self.device = torch.device(utils.load_config("TRAINING_INFO", "DEVICE"))
+        self.data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
 
     def leaf_mask_data(self, leaf, return_mask=False):
         """Filters pixels on the leaf and format data to a list.
@@ -205,10 +200,9 @@ class DataFormatter:
 
 
 if __name__ == "__main__":
-    NUMBER_OF_CHANNELS = 10
     LEAF_NAME = "foliolo2_enves_a4"
 
-    data_format = DataFormatter(NUMBER_OF_CHANNELS)
+    data_format = DataFormatter()
     X, y = data_format.leaf_mask_data(LEAF_NAME)
     # taking y_real as test y_pred
     y_real, y_pred = data_format.reconstitute_leaf(LEAF_NAME, arr=y)

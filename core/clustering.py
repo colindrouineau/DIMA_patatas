@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from format_data import DataFormatter
 from viz_image import VizImage, COLORS
-from data_processing import ImageCleaner
+from data_processing import ProcessImage
 
 
 class Clustering:
@@ -39,7 +39,9 @@ class Clustering:
             print(f"silhouette score using real labels is {sil_score_real}")
         print(f"silhouette score using clustering labels is {sil_score_kmeans}")
 
-    def plot_clusters_on_leaf(self, labels=None, clustering_data='raw data', clustering_mthd='Kmeans'):
+    def plot_clusters_on_leaf(
+        self, labels=None, clustering_data="raw data", clustering_mthd="Kmeans"
+    ):
         """plots on the leaf compared prediction distribution using both real labels
         and clustering labels.
 
@@ -47,7 +49,9 @@ class Clustering:
         if labels is None:
             labels = self.kmeans.labels_
         y_real, y_pred = self.data_format.reconstitute_leaf(self.leaf, labels)
-        self.visualise.plot_y_real_pred(y_real, y_pred, title=f'{clustering_mthd} on {clustering_data}')
+        self.visualise.plot_y_real_pred(
+            y_real, y_pred, title=f"{clustering_mthd} on {clustering_data}"
+        )
 
     def load_tnse(self):
         """Compute tnse on the loaded points and saves it as an attribute"""
@@ -62,7 +66,13 @@ class Clustering:
         # possible to use gpu. Not necessary for 1 leaf, but may be interesting for a larger dataset.
         self.embedded_data = reducer.fit_transform(self.points, n_jobs=-1)
 
-    def plot_embedded(self, labels=[0], dimred_mhtd='umap', clustering_data='raw data', clustering_mthd='Kmeans'):
+    def plot_embedded(
+        self,
+        labels=[0],
+        dimred_mhtd="umap",
+        clustering_data="raw data",
+        clustering_mthd="Kmeans",
+    ):
         """Plot 2D embedded data, colored using labels
 
         :param list[int] labels: labels used for coloring.
@@ -81,7 +91,7 @@ class Clustering:
 
         dist = len(set(labels)) > 3
         if dist:
-            cm = plt.get_cmap('viridis')
+            cm = plt.get_cmap("viridis")
             colors = [cm(i) for i in np.linspace(0, 1, len(set(labels)))]
 
         # select each unique label and color matching points.
@@ -91,17 +101,17 @@ class Clustering:
                 color = colors[i]
             else:
                 color = COLORS[i % 10]
-            
+
             mask = labels == label
             plt.scatter(x[mask], y[mask], color=color, s=1, marker="+")
 
-        plt.title(f"{clustering_mthd} on {clustering_data} : viz on {dimred_mhtd} fit data. Labels = {label_type}")
+        plt.title(
+            f"{clustering_mthd} on {clustering_data} : viz on {dimred_mhtd} fit data. Labels = {label_type}"
+        )
         plt.show()
 
-        
-
     def transform_points(self):
-        self.points = ImageCleaner().dataset_important(self.points)
+        self.points = ProcessImage().dataset_important(self.points)
 
 
 if __name__ == "__main__":

@@ -29,7 +29,7 @@ class NeuralNetCommon:
         )
         torch.save(state_dict, file)
         print(f"Model dict saved as {file}")
-        
+
         nn_whole_model_backup_path = os.path.join(
             utils.load_config("PATH", "DATA_DIR"),
             "..",
@@ -51,16 +51,12 @@ class NeuralNetCommon:
 class BinPixNN(nn.Module):
     """Simple MLP for pixel health binary classification"""
 
-    def __init__(self, input_size: int):
+    def __init__(self):
         super(BinPixNN, self).__init__()
-
+        input_size = utils.load_config("DATA", "NUMBER_OF_CHANNELS")
         hidden_size = utils.load_config(
             "TRAINING_INFO", "LAB_MASK", "MLP", "HIDDEN_SIZE"
         )
-        if hidden_size == "HALF":
-            hidden_size = input_size // 2
-        if hidden_size == "INPUT":
-            hidden_size = input_size + 10
         self.dropout = nn.Dropout(p=0.2)
         self.linear1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
@@ -85,9 +81,12 @@ class BinPixNN(nn.Module):
 class DistPixNN(nn.Module):
     """Simple MLP for pixel health binary classification"""
 
-    def __init__(self, input_size: int):
+    def __init__(self,):
         super(DistPixNN, self).__init__()
-        hidden_size = 50
+        input_size = utils.load_config("DATA", "NUMBER_OF_CHANNELS")
+        hidden_size = utils.load_config(
+            "TRAINING_INFO", "LAB_MASK", "MLP", "HIDDEN_SIZE"
+        )
         self.linear1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
         self.linear2 = nn.Linear(hidden_size, 40)

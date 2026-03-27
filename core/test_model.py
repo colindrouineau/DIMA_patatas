@@ -13,22 +13,16 @@ import utils
 class ModelTester:
     """Class to test models"""
 
-    def __init__(self, data_type="lab_mask"):
+    def __init__(self):
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.data_formatter = DataFormatter(
-            device=self.device,
-            number_of_channels=utils.load_config("DATA", "TOTAL_N_CHANNELS"),
-            data_type=data_type,
-        )
+        self.device = torch.device(utils.load_config("TRAINING_INFO", "DEVICE"))
+        self.data_formatter = DataFormatter()
         self.test_leaves = utils.load_config("DATA", "TEST_LEAVES")
-        self.visualise = VizImage(
-            number_of_channels=utils.load_config("DATA", "TOTAL_N_CHANNELS")
-        )
+        self.visualise = VizImage()
         self.threshold = utils.load_config(
             "TRAINING_INFO", "LAB_MASK", "MLP", "LABEL_THRESHOLD"
         )
-        self.data_type = data_type
+        self.data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
 
     def performance(self, y_test, y_predicted):
         if self.data_type == "lab_mask":
@@ -74,37 +68,21 @@ class ModelTester:
         }
         return metrics_dictionary
 
-    def nn_perf(self, models_dir):
-        """Prints performance of all the saved nn models in a directory"""
-        model_names = os.listdir(models_dir)
-        for model_name in model_names:
-            if model_name.split(".")[-1] != "pth":
-                print(f"{model_name} is not a valid model name")
-                continue
-            X_test, y_test, number_of_channels, _ = self.open_test_data(model_name)
+    def open_test_data(self):
+        original_X_test, y_set = self.data_formatter.load_data(
+            leaf_numbers=self.test_leaves
+        )
+        X_test, y_test = self.data_formatter.scale_and_split_data(
+            np.copy(original_X_test), y_set
+        )
+        return X_test, y_test, original_X_test
 
-            model_path = os.path.join(models_dir, model_name)
-            self.load_nn_and_perf(
-                number_of_channels, model_path, model_name, X_test, y_test
-            )
-
-    def open_test_data(self, model_name):
-        number_of_channels = utils.get_nfeatures_from_name(model_name)
-        # To load the right channels :
-        self.data_formatter.open_im.number_of_channels = number_of_channels
-        self.data_formatter.number_of_channels = number_of_channels
-        original_X_test, y_set = self.data_formatter.load_data(leaf_numbers=self.test_leaves)
-        X_test, y_test = self.data_formatter.scale_and_split_data(np.copy(original_X_test), y_set)
-        return X_test, y_test, number_of_channels, original_X_test
-
-    def load_nn_and_perf(
-        self, number_of_channels, model_path, model_name, X_test, y_test
-    ):
+    def load_nn_and_perf(self, model_path, model_name, X_test, y_test):
         """Load model, print performance, and returns y_pred"""
         if self.data_type == "lab_mask":
-            loaded_model = BinPixNN(input_size=number_of_channels).to(self.device)
+            loaded_model = BinPixNN().to(self.device)
         if self.data_type == "dist_mask":
-            loaded_model = DistPixNN(input_size=number_of_channels).to(self.device)
+            loaded_model = DistPixNN().to(self.device)
         try:
             loaded_model.load_state_dict(torch.load(model_path))
             loaded_model.eval()
@@ -166,14 +144,9 @@ class ModelTester:
         model_name = model_path.split("/")[-1]
 
         if model_extension == "pth":
-            number_of_channels = utils.get_nfeatures_from_name(model_name)
-            self.data_formatter.open_im.number_of_channels = number_of_channels
-            self.data_formatter.number_of_channels = number_of_channels
             X_test, y_test = self.data_formatter.leaf_mask_data(leaf)
             X_test, y_test = self.data_formatter.scale_and_split_data(X_test, y_test)
-            y_pred = self.load_nn_and_perf(
-                number_of_channels, model_path, model_name, X_test, y_test
-            )
+            y_pred = self.load_nn_and_perf(model_path, model_name, X_test, y_test)
             if round and self.data_type == "lab_mask":
                 y_pred = np.where(y_pred <= self.threshold, 0, 1)
             y_leaf, y_pred = self.data_formatter.reconstitute_leaf(leaf, y_pred)
@@ -198,8 +171,8 @@ class ModelTester:
         """Opens data and calls data_analysis method `plot_spectra`,
         displaying channel intensity distribution for each class (TP, TN, FP, FN)"""
         model_name = model_path.split("/")[-1]
-        X_test, y_test, number_of_channels, X_raw = self.open_test_data(model_name)
-        y_pred = self.load_nn_and_perf(number_of_channels, model_path, model_name, X_test, y_test)
+        X_test, y_test, X_raw = self.open_test_data(model_name)
+        y_pred = self.load_nn_and_perf(model_path, model_name, X_test, y_test)
         y_test = y_test.to("cpu").numpy().flatten()
         y_test = y_test.astype(bool)
         y_pred = np.where(y_pred <= self.threshold, 0, 1).astype(bool)
@@ -207,13 +180,12 @@ class ModelTester:
         TP = X_raw[y_pred & y_test]
         FP = X_raw[y_pred & ~y_test]
         FN = X_raw[~y_pred & y_test]
-        data_analyser = DataAnalyse(number_of_channels=number_of_channels)
+        data_analyser = DataAnalyse()
         data_analyser.plot_spectra([TN, TP, FP, FN], ["TN", "TP", "FP", "FN"])
 
 
 if __name__ == "__main__":
-    DATA_TYPE = "lab_mask"
-    model_tester = ModelTester(data_type=DATA_TYPE)
+    model_tester = ModelTester()
     # MODELS_DIR = os.path.join(
     #     model_tester.data_dir, "..", "model_backup", "neural_network"
     # )

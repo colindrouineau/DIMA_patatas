@@ -24,7 +24,7 @@ class Train:
     Main class for data loading and model training
     """
 
-    def __init__(self, model_type="MLP", data_type="lab_mask"):
+    def __init__(self):
         """
         - instanciates OpenImage and DataFormatter
         - set device to GPU, as attributes
@@ -33,22 +33,13 @@ class Train:
         :param str model_type: by default, "MLP". Other possibilities are "CNN"
 
         """
-        self.number_of_channels = (
-            utils.load_config("DATA", "NUMBER_OF_CHANNELS")
-            if type(utils.load_config("DATA", "NUMBER_OF_CHANNELS")) == int
-            else utils.load_config("DATA", "TOTAL_N_CHANNELS")
-        )
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model_type = model_type
-        self.data_type = data_type
+        self.number_of_channels = utils.load_config("DATA", "NUMBER_OF_CHANNELS")
+        self.model_type = utils.load_config("TRAINING_CHOICE", "MODEL_TYPE")
+        self.data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
 
-        self.open_im = OpenImage(number_of_channels=self.number_of_channels)
-        self.data_formatter = DataFormatter(
-            device=self.device,
-            number_of_channels=self.number_of_channels,
-            data_type=data_type,
-        )
-        self.model_tester = ModelTester(data_type=data_type)
+        self.open_im = OpenImage()
+        self.data_formatter = DataFormatter()
+        self.model_tester = ModelTester()
 
         if torch.cuda.is_available():
             print("The GPU is available and will be used for computation.")
@@ -65,8 +56,9 @@ class Train:
         )
 
         training_info = utils.load_config(
-            "TRAINING_INFO", data_type.upper(), model_type.upper()
+            "TRAINING_INFO", self.data_type.upper(), self.model_type.upper()
         )
+        self.device = torch.device(training_info["DEVICE"])
         # Some models don't need a learning rate
         if "LEARNING_RATE" in training_info:
             self.learning_rate = training_info["LEARNING_RATE"]
@@ -81,9 +73,9 @@ class Train:
 
     def define_mlp_bin_functions(self):
         training_info = utils.load_config("TRAINING_INFO", "LAB_MASK", "MLP")
-        self.model = BinPixNN(self.number_of_channels).to(self.device)
+        self.model = BinPixNN().to(self.device)
         # self.criterion = nn.BCELoss()
-        self.criterion = train_utils.FocalLoss(alpha=1, gamma=2) 
+        self.criterion = train_utils.FocalLoss(alpha=1, gamma=2)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
         self.step_lr_scheduler = ReduceLROnPlateau(
             self.optimizer,
@@ -96,7 +88,7 @@ class Train:
 
     def define_mlp_dist_functions(self):
         training_info = utils.load_config("TRAINING_INFO", "DIST_MASK", "MLP")
-        self.model = DistPixNN(self.number_of_channels).to(self.device)
+        self.model = DistPixNN().to(self.device)
         self.criterion = nn.MSELoss()
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
         self.step_lr_scheduler = ReduceLROnPlateau(
@@ -262,10 +254,7 @@ class Train:
         exp_path = os.path.join(self.tb_path, "tree", "tree_" + date)
         os.makedirs(exp_path, exist_ok=True)
         self.writer = SummaryWriter(exp_path)
-        # set all channels for opening hsi
-        self.data_formatter.open_im.number_of_channels = utils.load_config(
-            "DATA", "TOTAL_N_CHANNELS"
-        )
+
         patch_sklearn()
         x_set, y_set = self.data_formatter.load_data(
             channels=self.tree_channels, leaf_numbers=self.train_leave_numbers
@@ -309,11 +298,6 @@ class Train:
 
 if __name__ == "__main__":
 
-    DATA_TYPE = "lab_mask"
-    MODEL_TYPE = "MLP"
-
-    trainer = Train(data_type=DATA_TYPE, model_type=MODEL_TYPE)
+    trainer = Train()
     trainer.loop_nobatch()
 
-    # trainer = Train(data_type="lab_mask", model_type="tree")
-    # trainer.decision_tree()

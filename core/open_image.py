@@ -11,17 +11,9 @@ class OpenImage:
     Class to open the leaf data
     """
 
-    def __init__(
-        self,
-        number_of_channels=utils.load_config("DATA", "NUMBER_OF_CHANNELS"),
-    ):
-        """
-        :param int | str number_of_channels: For computation speed, it may be useful not to take all channel.
-            Default to "all". There are 111 channels. If higher value is given, `number_of_channels` will be set to 111
-        """
-        # path of the data directory
+    def __init__(self):
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
-        self.number_of_channels = number_of_channels
+        self.number_of_channels = utils.load_config("DATA", "NUMBER_OF_CHANNELS")
 
     def hsi_array(self, leaf):
         """Returns hyperspectral image array
@@ -90,11 +82,10 @@ class OpenImage:
 
 if __name__ == "__main__":
     LEAF_NAME = "foliolo2_enves_a9"
-    NUMBER_OF_CHANNELS = -1
 
-    open_im = OpenImage(number_of_channels=NUMBER_OF_CHANNELS)
+    open_im = OpenImage()
 
     CHANNEL_NUMBER = 80
     x, y = 150, 100
-    hsi_ex = open_im.hsi_array(LEAF_NAME, normalise=True)
+    hsi_ex = open_im.hsi_array(LEAF_NAME)
     print(f"HSI image has dimensions : {hsi_ex.shape}")
