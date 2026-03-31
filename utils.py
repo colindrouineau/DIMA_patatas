@@ -7,7 +7,7 @@ def load_config(
     second_key: str = None,
     third_key: str = None,
     fourth_key: str = None,
-    config_path: str = "/home/colind/work/Mines/TR_DIMA/DIMA_code/patatas_code/CONFIG.yaml",
+    config_path: str = "/home/colind/work/Mines/TR_DIMA/DIMA_code/CONFIG.yaml",
 ) -> dict[str, object]:
     """
     Returns CONFIG dictionnary or value
