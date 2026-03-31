@@ -1,11 +1,16 @@
 # AI detection of blight on potatoe leaves.
 2 months research project
 
-nvcc: NVIDIA (R) Cuda compiler driver
-Copyright (c) 2005-2023 NVIDIA Corporation
-Built on Fri_Jan__6_16:45:21_PST_2023
-Cuda compilation tools, release 12.0, V12.0.140
-Build cuda_12.0.r12.0/compiler.32267302_0
+## Instructions for use :
+FILL WHEN I ADD UNET.
+
+### Build a new Neural Network model on a new type of data
+
+#### New Neural Network
+- File CONFIG.yaml : 
+    - 
+
+#### New datatype
 
 
 

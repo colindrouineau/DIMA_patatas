@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-
 class EarlyStopping:
     def __init__(self, patience=5, delta=0):
         self.patience = patience
@@ -20,7 +19,7 @@ class EarlyStopping:
         # Stop if the improvement is not good enough
         elif (
             abs(self.best_score) - abs(score)
-            < abs(self.best_score) / (1e5 / 2) + self.delta
+            < self.delta
         ):
             self.counter += 1
             if self.counter >= self.patience:

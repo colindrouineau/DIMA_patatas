@@ -3,14 +3,16 @@ from sklearn import metrics
 from sklearn.manifold import TSNE
 import numpy as np
 import matplotlib
+from matplotlib.colors import BoundaryNorm
+from matplotlib.cm import ScalarMappable
 import umap
 
 import matplotlib.pyplot as plt
 
-from format_data import DataFormatter
-from patatas_code.data.viz_image import VizImage, COLORS
-from data_processing import ProcessImage
-from data_analysis import DataAnalyse
+from data_mod.format_data import DataFormatter
+from data_mod.viz_image import VizImage, COLORS
+from data_mod.data_processing import ProcessImage
+from data_mod.data_analysis import DataAnalyse
 
 
 class Clustering:
@@ -54,7 +56,7 @@ class Clustering:
             y_real, y_pred, title=f"{clustering_mthd} on {clustering_data}"
         )
 
-    def load_tnse(self):
+    def load_tsne(self):
         """Compute tnse on the loaded points and saves it as an attribute"""
         tsne = TSNE()
         self.embedded_data = tsne.fit_transform(self.points)
@@ -88,23 +90,25 @@ class Clustering:
         ):
             labels = self.kmeans.labels_
             label_type = "cluster labels"
-        labels = np.array(labels)  # for mask later
+        labels = np.array(list(map(int, labels)))  # for mask later
 
-        dist = len(set(labels)) > 3
+        unique_labels = list(set(labels))
+        dist = len(unique_labels) > 3
+        cm = plt.get_cmap("viridis")
+        colors = [cm(i) for i in np.linspace(0, 1, len(unique_labels))]
         if dist:
-            cm = plt.get_cmap("viridis")
-            colors = [cm(i) for i in np.linspace(0, 1, len(set(labels)))]
+            # Create a ScalarMappable for the colorbar
+            norm = plt.Normalize(vmin=min(unique_labels), vmax=max(unique_labels))
+            scalar_mappable = ScalarMappable(norm=norm, cmap=cm)
 
-        # select each unique label and color matching points.
-        for i, label in enumerate(list(set(labels))):
-            # For each category, pick a color
-            if dist:
-                color = colors[i]
-            else:
-                color = COLORS[i % 10]
-
+        # Plot your data
+        fig, ax = plt.subplots()
+        for i, label in enumerate(unique_labels):
+            color = colors[i]
             mask = labels == label
-            plt.scatter(x[mask], y[mask], color=color, s=1, marker="+")
+            ax.scatter(x[mask], y[mask], color=color, s=1, marker="+")
+        if dist:
+            plt.colorbar(scalar_mappable, ax=ax)
 
         plt.title(
             f"{clustering_mthd} on {clustering_data} : viz on {dimred_mhtd} fit data. Labels = {label_type}"
@@ -112,6 +116,7 @@ class Clustering:
         plt.show()
 
     def transform_points(self):
+        """Reduce dimensionnality to important features as defined in `data_analysis.vector_important_features`"""
         self.points = DataAnalyse().dataset_important(self.points)
 
 
@@ -126,7 +131,7 @@ if __name__ == "__main__":
     cluster.cluster(cluster.points)
     cluster.plot_clusters_on_leaf()
 
-    cluster.load_tnse()
+    cluster.load_tsne()
     cluster.plot_embedded()
 
     cluster.cluster(cluster.embedded_data)

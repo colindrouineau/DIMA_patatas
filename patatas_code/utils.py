@@ -7,7 +7,7 @@ def load_config(
     second_key: str = None,
     third_key: str = None,
     fourth_key: str = None,
-    config_path: str = "/home/colind/work/Mines/TR_DIMA/DIMA_code/CONFIG.yaml",
+    config_path: str = "/home/colind/work/Mines/TR_DIMA/DIMA_code/patatas_code/CONFIG.yaml",
 ) -> dict[str, object]:
     """
     Returns CONFIG dictionnary or value
@@ -57,6 +57,13 @@ def leaf_training_list(not_train_leaves):
     train_leave_numbers = sorted(list(set(all_leaves) - set(not_train_leaves)))[::-1]
     return train_leave_numbers
 
+def leaf_no_test():
+    """Returns leaf numbers of all leaves except those used for test"""
+    number_of_leaves = load_config("DATA", "NUMBER_OF_LEAVES")
+    all_leaves = list(range(1, number_of_leaves + 1))
+    test_leaves = load_config("DATA", "TEST_LEAVES")
+    not_test_leaves = sorted(list(set(all_leaves) - set(test_leaves)))[::-1]
+    return not_test_leaves
 
 def get_nfeatures_from_name(name):
     """For MLP model name"""

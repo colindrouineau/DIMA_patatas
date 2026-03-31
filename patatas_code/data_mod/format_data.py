@@ -1,0 +1,239 @@
+import numpy as np
+from tqdm import tqdm
+from sklearn.preprocessing import StandardScaler
+from sklearn.utils import shuffle
+
+import torch
+
+from data_mod.open_image import OpenImage
+from data_mod.data_processing import ProcessImage
+import utils
+
+
+class DataFormatter:
+    """
+    class to format data for training
+    """
+
+    def __init__(self):
+        """
+        initiates attributes using CONFIG information
+        """
+        self.open_im = OpenImage()
+        self.number_of_channels = utils.load_config("DATA", "NUMBER_OF_CHANNELS")
+        self.balance = utils.load_config("TRAINING_CHOICE", "BALANCE")
+        self.device = torch.device(utils.load_config("TRAINING_INFO", "DEVICE"))
+        self.data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
+        self.image_process = ProcessImage()
+
+    def leaf_mask_data(self, leaf, return_mask=False):
+        """Filters pixels on the leaf and format data to a list.
+        Takes pixel which are on both HSI leaf and lab_img leaf.
+
+        :param str leaf: name of the leaf
+        :param bool return_mask: if True, returns (label_array, leaf_mask)
+
+
+        Returns
+        -------
+        X_leaf_pixels : list of arrays
+            The spectograms for each pixel
+        Y_leaf_pixels : list
+            The actual label for each pixel
+        """
+        hsi_array = self.open_im.hsi_array(leaf)
+        if self.data_type == "lab_mask":
+            lab_arr = self.open_im.lab_array(leaf)
+            # Remove all pixel which have a too low max intensity. (< 0.01) (outside leaf)
+            mask_lab = lab_arr > 0.01
+        if self.data_type == "dist_mask":
+            lab_arr = self.open_im.mask_dist_array(leaf)
+            mask_lab = (
+                lab_arr > -1
+            )  # We take all, assuming hsi filter is enough, since the sick pixels have the same value than pixels outside the leaf
+        if self.data_type == "ring_mask":
+            lab_arr = self.open_im.ring_mask_array(leaf)
+            mask_lab = lab_arr > 0.1
+
+        mask_hsi = hsi_array.max(axis=-1) > 0.01
+        leaf_mask = mask_hsi & mask_lab
+
+        if return_mask:
+            return lab_arr, leaf_mask
+        x_leaf_pixels = hsi_array[leaf_mask]
+        y_leaf_labels = lab_arr[leaf_mask]
+        if self.data_type == "lab_mask":
+            # label = 1 if the pixel is sick, 0 otherwise
+            y_leaf_labels = np.where(y_leaf_labels == 200, 1, 0)
+
+        return x_leaf_pixels, y_leaf_labels
+
+    def reconstitute_leaf(self, leaf, arr):
+        """
+        Reconstitutes one array of dimension 1 or 2 that was filtered through leaf_mask to initial leaf geometry.
+        It can be either labels or hsi_array.
+
+        Returns
+        -------
+        y_real, to_leaf_form : (np.array, np.array)
+            images of real label and reconstituted leaf
+        """
+        y_real, leaf_mask = self.leaf_mask_data(leaf, return_mask=True)
+
+        # track mask transformation :
+        height, width = leaf_mask.shape
+        position_arr = np.array([[(x, y) for y in range(width)] for x in range(height)])
+        # becomes a 1D arr, but we tracked position transformations
+        masked_position_arr = position_arr[leaf_mask]
+
+        dimension = len(arr.shape)
+        # for lab_mask label
+        # check if the labeling is continuous or 0,1
+        if dimension == 1 and self.data_type == "lab_mask":
+            category = list(np.unique(arr).astype(int)) == [0, 1]
+            if category:
+                # put y_pred to 0, 200, 255 format like y_real
+                arr = np.where(arr == 1, 200, 255)
+            else:
+                # 0 = out of leaf. Fill the whole possible range of values ([0,255])
+                min_value = 20
+                arr = arr / np.max(arr) * (255 - min_value) + min_value
+            to_leaf_form = np.zeros((height, width))
+        elif dimension == 2:
+            bands = arr.shape[1]
+            to_leaf_form = np.zeros((height, width, bands))
+        else:
+            to_leaf_form = np.zeros((height, width))
+
+        # reconstitute 2 or 3 D array
+        # add missing values
+        for element, (x, y) in zip(arr, masked_position_arr):
+            if dimension == 1:
+                to_leaf_form[x, y] = element
+            if dimension == 2:
+                to_leaf_form[x, y, :] = element
+
+        return y_real, to_leaf_form
+
+    def load_data(self, channels=None, leaf_numbers=None):
+        """Load data.
+        Set number of samples and number of features as attributes.
+
+        :param list | None channels: if channels is not None, selects channels (accordingly to the list `channels`).
+        If it is None, selects channels as indicated in CONFIG file.
+        :param list | None leaf_number: if None, all leaves data should be loaded. If list, only the corresponding leaves.
+
+        Returns
+        -------
+        x_set : np.array
+            Pixels array. Dim (number_of_samples, number_of_channels = features)
+        y_set : np.array
+            Labels array. Dim (number_of_samples)
+        """
+        leaves = self.open_im.leaves(leaf_numbers=leaf_numbers)
+        verbose = len(leaves) > 50
+        if verbose:
+            leaves = tqdm(leaves, desc="loading data", unit="leaf")
+        if channels is None:
+            x_set = np.empty((0, self.number_of_channels))
+        else:
+            x_set = np.empty((0, len(channels)))
+        y_set = []
+
+        for leaf in leaves:
+            x, y = self.leaf_mask_data(leaf)
+            if channels is not None:
+                x = x[:, channels]
+            x_set = np.concat((x_set, x))
+            y_set = np.concat((y_set, y))
+
+        n_samples, n_features = x_set.shape
+        if verbose:
+            self.load_data_verbose(n_samples, n_features, y_set)
+        # shuffle data
+        x_set, y_set = shuffle(x_set, y_set)
+        if self.data_type == "ring_mask":
+            # Creates 3 categories fit for entropy loss function.
+            y_tuple = np.zeros((y_set.shape[0], 3), dtype=np.int8)
+            y_tuple[:, 0] = y_set == 255  # healthy
+            y_tuple[:, 1] = y_set == 100  # ring
+            y_tuple[:, 2] = y_set == 200  # sick
+            y_set = y_tuple
+
+        return x_set, y_set
+
+    def load_data_verbose(self, n_samples, n_features, y_set):
+        print(
+            f"There are {n_samples} pixels in the loaded dataset with each {n_features} channels"
+        )
+        if self.data_type == "lab_mask":
+            print(f"The proportion of bad pixels is {100 * np.mean(y_set):.2f} %")
+        if self.data_type == "dist_mask":
+            print(f"The mean distance to a sick pixel is {np.mean(y_set):.2f}")
+        if self.data_type == "ring_mask":
+            n_ring = len(y_set[y_set == 100])
+            n_sick = len(y_set[y_set == 200])
+            n_healthy = len(y_set[y_set == 255])
+            print(
+                f"Proportion of : sick pixels = {100 * n_sick /n_samples:.2f} %, ring_pixels = {100 * n_ring / n_samples:.2f} %, healthy pixels = {100 * n_healthy / n_samples:.2f} %"
+            )
+
+    def balance_data(self, x, y):
+        """Add randomly duplicates in the (training) set to have 50/50 distribution of sick/non sick pixels.
+        Then shuffle."""
+        pos_n = int(np.sum(y))
+        n = y.shape[0]
+        # How many sick pixels we should add to have a proportion of self.balance of sick pixel in the train dataset
+        gap = int((self.balance * n - pos_n) / (1 - self.balance))
+        if gap <= 0:
+            print(
+                f"There are already enough sick pixels for a balanced data set (balance={self.balance})"
+            )
+            return x, y
+
+        positive_profiles = x[y == 1]
+        added_positive_idx = np.random.choice(range(pos_n), size=gap, replace=True)
+        added_positive = np.copy(positive_profiles[added_positive_idx])
+
+        x = np.concat((x, added_positive))
+        y = np.concat((y, np.ones(gap)))
+        # Finally, shuffle
+        suffle_idx = np.random.choice(range(x.shape[0]), size=x.shape[0], replace=False)
+
+        return x[suffle_idx], y[suffle_idx]
+
+    def scale_and_split_data(
+        self, x_set, y_set, to_tensor=True, scale=True, requires_grad: bool = False, normalise=utils.load_config("TRAINING_CHOICE", "NORMALISE")
+    ) -> tuple:
+        """Fits the data for Neural Network training. Optional parameters to specify data type and transformation."""
+        # Add duplicates in the training set to have 50/50 distribution of sick/non sick pixels
+        if normalise:
+            x_set = self.image_process.normalise_image_spectra(x_set)
+        if self.balance:
+            x_set, y_set = self.balance_data(x_set, y_set)
+        if scale:
+            sc = StandardScaler()
+            x_set = sc.fit_transform(x_set)
+        if to_tensor:
+            x_set = torch.from_numpy(x_set.astype(np.float32)).to(self.device)
+            y_set = torch.from_numpy(y_set.astype(np.float32)).to(self.device)
+            dim2 = 1 if len(y_set.shape) == 1 else y_set.shape[1]
+            y_set = y_set.view(y_set.shape[0], dim2)
+        if requires_grad:
+            x_set.requires_grad_(True)
+
+        return x_set, y_set
+
+
+if __name__ == "__main__":
+    LEAF_NAME = "foliolo2_enves_a4"
+
+    data_format = DataFormatter()
+    X, y = data_format.leaf_mask_data(LEAF_NAME)
+    # taking y_real as test y_pred
+    y_real, y_pred = data_format.reconstitute_leaf(LEAF_NAME, arr=y)
+
+    from data_mod.viz_image import VizImage
+
+    visualise = VizImage()
+    visualise.plot_y_real_pred(y_real, y_pred, title="test only real : " +LEAF_NAME)

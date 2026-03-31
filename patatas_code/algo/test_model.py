@@ -2,12 +2,11 @@ import os
 import numpy as np
 import torch
 from sklearn import metrics
-import sys
-sys.path.append("/home/colind/work/Mines/TR_DIMA/DIMA_code/patatas_code/data")
-from format_data import DataFormatter
-from viz_image import VizImage
-from data_analysis import DataAnalyse
-from models import BinPixNN, DistPixNN
+from data_mod.format_data import DataFormatter
+from data_mod.viz_image import VizImage
+from data_mod.data_analysis import DataAnalyse
+from algo.nn_models import BinPixNN, DistPixNN, RingPixNN
+from algo.tree_forest import DecisionTree, RandomForest
 from joblib import load
 import utils
 
@@ -32,6 +31,8 @@ class ModelTester:
             return self.performance_2class(y_test, y_predicted)
         if self.data_type == "dist_mask":
             return self.performance_continuous(y_test, y_predicted)
+        if self.data_type == "ring_mask":
+            return self.performance_ring(y_test, y_predicted)
 
     def performance_continuous(self, y_test, y_predicted):
         mse = metrics.mean_squared_error(y_test, y_predicted)
@@ -40,11 +41,21 @@ class ModelTester:
         metrics_dictionary = {"MSE": mse}
         return metrics_dictionary
 
-    def performance_2class(
-        self,
-        y_test,
-        y_predicted,
-    ):
+    def performance_ring(self, y_test, y_pred):
+        target_names = ["healthy", "ring", "sick"]
+        print(
+            "Classification Report:\n",
+            metrics.classification_report(y_test, y_pred),
+            # target_names=target_names,
+        )
+        class_dict = metrics.classification_report(
+            y_test,
+            y_pred,
+            output_dict=True,  # target_names=target_names
+        )
+        return class_dict["0.0"]
+
+    def performance_2class(self, y_test, y_predicted):
         """Print performance information of a 2-class classification model
 
         Returns
@@ -86,23 +97,36 @@ class ModelTester:
             loaded_model = BinPixNN().to(self.device)
         if self.data_type == "dist_mask":
             loaded_model = DistPixNN().to(self.device)
-        try:
-            loaded_model.load_state_dict(torch.load(model_path))
-            loaded_model.eval()
-            print(f"performance of model {model_name} on test dataset :")
-            with torch.no_grad():
-                # Print model performance
-                y_predicted = loaded_model(X_test)
-                y_test = y_test.to("cpu").numpy().flatten()
-                y_predicted = y_predicted.to("cpu").numpy().flatten()
-                # Copy to not round the y_predicted about to be returned
-                self.performance(y_test, np.copy(y_predicted))
-            print()
-        except Exception as e:
-            print(e)
-            y_predicted = None
-        finally:
-            return y_predicted
+        if self.data_type == "ring_mask":
+            loaded_model = RingPixNN().to(self.device)
+        loaded_model.load_state_dict(torch.load(model_path))
+        loaded_model.eval()
+        print(f"performance of model {model_name} on test dataset :")
+        with torch.no_grad():
+            # Print model performance
+            y_predicted = loaded_model(X_test)
+            y_test = y_test.to("cpu").numpy().flatten()
+            y_predicted = y_predicted.to("cpu").numpy()
+            if self.data_type == "ring_mask":
+                # to 0 (healthy), 1 (ring), 2 (sick)
+                y_test[y_test == 255] = 0
+                y_test[y_test == 100] = 1
+                y_test[y_test == 200] = 2
+
+                def keep_likely_class(x):
+                    return np.argmax(x)
+
+                # To 1D
+                y_predicted = np.apply_along_axis(
+                    func1d=keep_likely_class, axis=1, arr=y_predicted
+                )
+                """Flatten pose un problème pour ring mask puisque les labels sont de dimension 3. Il faut réfléchir à comment je deal avec ça.
+                Pour le moment je choisis la catégorie avec la plus grande probabilité."""
+            else:
+                y_predicted = y_predicted.flatten()
+            # Copy to not round the y_predicted about to be returned
+            self.performance(y_test, np.copy(y_predicted))
+        return y_predicted
 
     def tree_perf(self):
         """Prints performance of all the saved decision tree models"""
@@ -134,7 +158,7 @@ class ModelTester:
             print(e)
         finally:
             return y_predicted
-        
+
     def one_forest_perf(self, model_name, X_test, y_test):
         models_dir = os.path.join(self.data_dir, "..", "model_backup", "rd_forest")
         model_path = os.path.join(models_dir, model_name)
@@ -145,7 +169,10 @@ class ModelTester:
             y_pred = loaded_model_joblib.predict(X_test)
             y_test = y_test.flatten()
             y_pred = y_pred.flatten()
-            print("Classification Report:\n", metrics.classification_report(y_test, y_pred))
+            print(
+                "Classification Report:\n",
+                metrics.classification_report(y_test, y_pred),
+            )
         except Exception as e:
             print(e)
         finally:
@@ -175,14 +202,17 @@ class ModelTester:
 
         if model_extension == "joblib":
             channels = utils.load_config(
-            "TRAINING_INFO", self.data_type.upper(), self.model_type.upper(), "CHANNELS"
-        )
+                "TRAINING_INFO",
+                self.data_type.upper(),
+                self.model_type.upper(),
+                "CHANNELS",
+            )
             X_test, y_test = self.data_formatter.leaf_mask_data(leaf)
             X_test, y_test = self.data_formatter.scale_and_split_data(
                 X_test, y_test, scale=False, to_tensor=False
             )
             X_test = X_test[:, channels]
-            if self.model_type == "tree":
+            if self.model_type == "TREE":
                 y_pred = self.one_tree_perf(model_name, X_test, y_test)
                 y_leaf, y_pred = self.data_formatter.reconstitute_leaf(leaf, y_pred)
                 self.visualise.plot_y_real_pred(
@@ -222,8 +252,9 @@ if __name__ == "__main__":
 
     LEAF = "foliolo7_enves_a10"
     MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/model_backup/nn_binary/2026-03-23,16:47_MLP-on-lab_mask_1000epochs_lr:0.3_111features_balanced:False_.pth"
-    MODEL_PATH_TREE = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/tree/2026-03-20,10:44_tree_max-depth:4_channels:[64,68,65]_balanced:False_.joblib"
+    MODEL_PATH_TREE = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/tree/2026-03-31,10:18_tree_max-depth:4_channels:[64,68,65]_balanced:False_.joblib"
     # model_tester.compare_class_spectra(MODEL_PATH_MLP)
     MODEL_PATH_FOREST = "/home/colind/work/Mines/TR_DIMA/DIMA_code/model_backup/rd_forest/2026-03-27,16:57_rdforest_nestimators:100_balanced:False_.joblib"
-    model_tester.analyse_one_leaf(LEAF, MODEL_PATH_FOREST, round=False)
-    
+    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/nn_binary/2026-03-30,13:49_MLP-on-lab_mask_1000epochs_lr:0.3_10features_balanced:False_.pth"
+    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/nn_ring/2026-03-31,09:41_MLP-on-ring_mask_1000epochs_lr:0.3_10features_balanced:False_.pth"
+    model_tester.analyse_one_leaf(LEAF, MODEL_PATH_TREE, round=False)
