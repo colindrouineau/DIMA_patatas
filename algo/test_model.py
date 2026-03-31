@@ -38,7 +38,7 @@ class ModelTester:
         mse = metrics.mean_squared_error(y_test, y_predicted)
         print("Model's performances on test dataset: ")
         print(f"Mean squared error = {mse:.2f}")
-        metrics_dictionary = {"MSE": mse}
+        metrics_dictionary = {"mse": mse}
         return metrics_dictionary
 
     def performance_ring(self, y_test, y_pred):
@@ -78,7 +78,7 @@ class ModelTester:
             "accuracy": round(accuracy, 4),
             "recall": round(recall, 4),
             "precision": round(precision, 4),
-            "F1_score": round(f1, 4),
+            "f1_score": round(f1, 4),
         }
         return metrics_dictionary
 

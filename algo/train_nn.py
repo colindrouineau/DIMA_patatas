@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from data_mod.open_image import OpenImage
 from data_mod.format_data import DataFormatter
-from patatas_code.algo.nn_models import BinPixNN, DistPixNN, RingPixNN
+from algo.nn_models import BinPixNN, DistPixNN, RingPixNN
 from algo.test_model import ModelTester
 import utils
 import algo.train_utils as train_utils
@@ -30,7 +30,7 @@ class TrainNN:
         :param str model_type: by default, "MLP". Other possibilities are "CNN"
 
         """
-        self.date = datetime.today().strftime("%Y-%m-%d,%H:%M")
+        self.date = datetime.today().strftime("%d-%m--%H:%M")
         self.number_of_channels = utils.load_config("DATA", "NUMBER_OF_CHANNELS")
         self.model_type = utils.load_config("TRAINING_CHOICE", "MODEL_TYPE")
         self.data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
@@ -45,7 +45,9 @@ class TrainNN:
             print("The GPU is NOT available.")
 
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
-        self.tb_path = os.path.join(self.data_dir, "..", "runs")
+        self.tb_path = os.path.join(self.data_dir, "..", "runs", self.data_type, self.date + "_" + self.model_type)
+        os.makedirs(self.tb_path, exist_ok=True)
+        self.writer = SummaryWriter(self.tb_path)
         self.balance = utils.load_config("TRAINING_CHOICE", "BALANCE")
         self.test_leaves = utils.load_config("DATA", "TEST_LEAVES")
         self.validation_leaves = utils.load_config("DATA", "VALIDATION_LEAVES")
@@ -121,11 +123,6 @@ class TrainNN:
         -------
         X_train, y_train, X_val, y_val, date
         """
-        exp_path = os.path.join(
-            self.tb_path, f"{self.model_type}-{self.data_type}", self.date
-        )
-        os.makedirs(exp_path, exist_ok=True)
-        self.writer = SummaryWriter(exp_path)
         X_train, y_train = self.data_formatter.load_data(
             leaf_numbers=self.train_leave_numbers
         )
@@ -146,15 +143,10 @@ class TrainNN:
 
     def epoch_info(self, epoch, training_loss, val_loss):
         """Logs and prints useful information for epoch"""
-        self.writer.add_scalars(
-            "Training vs. Validation Loss",
-            {"Training": training_loss, "Validation": val_loss},
-            epoch + 1,
-        )
+        self.writer.add_scalar("Training", training_loss, epoch + 1)
+        self.writer.add_scalar("Validation", val_loss, epoch + 1)
         self.writer.add_scalar(
-            "learning_rate",
-            self.step_lr_scheduler.get_last_lr()[0],
-            epoch,
+            "Learning_rate", self.step_lr_scheduler.get_last_lr()[0], epoch + 1
         )
         if (epoch + 1) % (max(self.num_epochs // 30, 1)) == 0 or epoch == 0:
             print(
@@ -215,11 +207,10 @@ class TrainNN:
         """Saves model performance to tensorboard and prints it"""
         with torch.no_grad():
             # writer.add_image('mnist_images', img_grid) (to add an image
-            # self.writer.add_graph(
-            #     model, ex_vect[0, :]
-            # )  # Don't know what it does exactly
+
             x_set, y_set = self.data_formatter.load_data(leaf_numbers=self.test_leaves)
             X_test, y_test = self.data_formatter.scale_and_split_data(x_set, y_set)
+            self.writer.add_graph(model, X_test)
             # Print model performance
             y_predicted = model(X_test)
             y_test = y_test.to("cpu").numpy().flatten()
@@ -234,12 +225,16 @@ class TrainNN:
                 "number of features": self.number_of_channels,
                 "balance dataset": self.balance,
                 "initial lr": self.learning_rate,
+                "normalised": utils.load_config("TRAINING_CHOICE", "NORMALISE"),
             }
-            self.writer.add_text("h_param", str(hparam_dict))
-            self.writer.add_text("metrics", str(metrics_dictionary))
             self.writer.add_hparams(
-                hparam_dict=hparam_dict, metric_dict=metrics_dictionary
+                hparam_dict=hparam_dict, metric_dict=metrics_dictionary, run_name=self.tb_path
             )
+            training_info = utils.load_config("TRAINING_INFO", self.data_type.upper(), self.model_type.upper())
+            training_info = str(training_info)
+            self.writer.add_text(tag="model additional tuning", text_string=training_info)
+            training_functions = f"Model is : {self.model}, \n Loss function is : {self.criterion}, \n Optimizer is {self.optimizer}"
+            self.writer.add_text(tag="model functions", text_string=training_functions)
             self.writer.close()
 
 
