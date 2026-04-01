@@ -9,6 +9,7 @@ from algo.test_model import ModelTester
 import utils
 from algo.tree_forest import DecisionTree, RandomForest
 
+
 class TrainTree:
 
     def __init__(self):
@@ -27,11 +28,8 @@ class TrainTree:
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
         self.tb_path = os.path.join(self.data_dir, "..", "runs")
         self.balance = utils.load_config("TRAINING_CHOICE", "BALANCE")
-        self.test_leaves = utils.load_config("DATA", "TEST_LEAVES")
         self.validation_leaves = utils.load_config("DATA", "VALIDATION_LEAVES")
-        self.train_leave_numbers = utils.leaf_training_list(
-            self.test_leaves + self.validation_leaves
-        )
+        self.train_leave_numbers = utils.leaf_training_list()
         self.max_depth = utils.load_config(
             "TRAINING_INFO", self.data_type.upper(), "TREE", "MAX_DEPTH"
         )
@@ -62,16 +60,16 @@ class TrainTree:
         self.tree_results(clf)
 
     def tree_results(self, clf):
-        # Predict the response for test dataset
+        # Predict the response for validation dataset
 
         x_set, y_set = self.data_formatter.load_data(
-            channels=self.tree_channels, leaf_numbers=self.test_leaves
+            channels=self.tree_channels, leaf_numbers=self.validation_leaves
         )
-        X_test, y_test = self.data_formatter.scale_and_split_data(
+        X_val, y_val = self.data_formatter.scale_and_split_data(
             x_set, y_set, to_tensor=False, scale=False, normalise=False
         )
-        y_pred = clf.predict(X_test)
-        metrics_dictionary = self.model_tester.performance(y_test, y_pred)
+        y_pred = clf.predict(X_val)
+        metrics_dictionary = self.model_tester.performance(y_val, y_pred)
         hparam_dict = {
             "max_depth": self.max_depth,
             "channels": self.tree_channels,
@@ -102,11 +100,8 @@ class TrainForest:
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
         self.tb_path = os.path.join(self.data_dir, "..", "runs")
         self.balance = utils.load_config("TRAINING_CHOICE", "BALANCE")
-        self.test_leaves = utils.load_config("DATA", "TEST_LEAVES")
         self.validation_leaves = utils.load_config("DATA", "VALIDATION_LEAVES")
-        self.train_leave_numbers = utils.leaf_training_list(
-            self.test_leaves + self.validation_leaves
-        )
+        self.train_leave_numbers = utils.leaf_training_list()
 
         training_info = utils.load_config(
             "TRAINING_INFO", self.data_type.upper(), "RANDOM_FOREST"
@@ -129,13 +124,13 @@ class TrainForest:
 
     def random_forest_results(self, rf_classifier):
         x_set, y_set = self.data_formatter.load_data(
-            channels=self.forest_channels, leaf_numbers=self.test_leaves
+            channels=self.forest_channels, leaf_numbers=self.validation_leaves
         )
-        X_test, y_test = self.data_formatter.scale_and_split_data(
+        X_val, y_val = self.data_formatter.scale_and_split_data(
             x_set, y_set, to_tensor=False, scale=False
         )
-        y_pred = rf_classifier.predict(X_test)
-        classification_rep = classification_report(y_test, y_pred)
+        y_pred = rf_classifier.predict(X_val)
+        classification_rep = classification_report(y_val, y_pred)
 
         print("Classification Report:\n", classification_rep)
 
@@ -146,4 +141,9 @@ if __name__ == "__main__":
     # tree = TrainTree()
     # tree.decision_tree()
     import joblib
-    print(joblib.load("/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/tree/2026-03-31,10:18_tree_max-depth:4_channels:[64,68,65]_balanced:False_.joblib"))
+
+    print(
+        joblib.load(
+            "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/tree/2026-03-31,10:18_tree_max-depth:4_channels:[64,68,65]_balanced:False_.joblib"
+        )
+    )

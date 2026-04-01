@@ -50,9 +50,12 @@ def sort_images(path_list):
     return sorted(path_list, key=key_sort_func)
 
 
-def leaf_training_list(not_train_leaves):
+def leaf_training_list():
     """Returns numbers of training leaves (those which are not test nor validation)"""
     number_of_leaves = load_config("DATA", "NUMBER_OF_LEAVES")
+    val_leaves = load_config("DATA", "VALIDATION_LEAVES")
+    test_leaves = load_config("DATA", "TEST_LEAVES")
+    not_train_leaves = val_leaves + test_leaves
     all_leaves = list(range(1, number_of_leaves + 1))
     train_leave_numbers = sorted(list(set(all_leaves) - set(not_train_leaves)))[::-1]
     return train_leave_numbers

@@ -37,7 +37,7 @@ class TrainNN:
 
         self.open_im = OpenImage()
         self.data_formatter = DataFormatter()
-        self.model_tester = ModelTester()
+        self.model_valer = ModelTester()
 
         if torch.cuda.is_available():
             print("The GPU is available and will be used for computation.")
@@ -45,15 +45,18 @@ class TrainNN:
             print("The GPU is NOT available.")
 
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
-        self.tb_path = os.path.join(self.data_dir, "..", "runs", self.data_type, self.date + "_" + self.model_type)
+        self.tb_path = os.path.join(
+            self.data_dir,
+            "..",
+            "runs",
+            self.data_type,
+            self.date + "_" + self.model_type,
+        )
         os.makedirs(self.tb_path, exist_ok=True)
         self.writer = SummaryWriter(self.tb_path)
         self.balance = utils.load_config("TRAINING_CHOICE", "BALANCE")
-        self.test_leaves = utils.load_config("DATA", "TEST_LEAVES")
         self.validation_leaves = utils.load_config("DATA", "VALIDATION_LEAVES")
-        self.train_leave_numbers = utils.leaf_training_list(
-            self.test_leaves + self.validation_leaves
-        )
+        self.train_leave_numbers = utils.leaf_training_list()
         self.device = torch.device(utils.load_config("TRAINING_INFO", "DEVICE"))
         training_info = utils.load_config(
             "TRAINING_INFO", self.data_type.upper(), self.model_type.upper()
@@ -208,18 +211,18 @@ class TrainNN:
         with torch.no_grad():
             # writer.add_image('mnist_images', img_grid) (to add an image
 
-            x_set, y_set = self.data_formatter.load_data(leaf_numbers=self.test_leaves)
-            X_test, y_test = self.data_formatter.scale_and_split_data(x_set, y_set)
-            self.writer.add_graph(model, X_test)
+            x_set, y_set = self.data_formatter.load_data(leaf_numbers=self.validation_leaves)
+            X_val, y_val = self.data_formatter.scale_and_split_data(x_set, y_set)
+            self.writer.add_graph(model, X_val)
             # Print model performance
-            y_predicted = model(X_test)
-            y_test = y_test.to("cpu").numpy().flatten()
+            y_predicted = model(X_val)
+            y_val = y_val.to("cpu").numpy().flatten()
             y_predicted = y_predicted.to("cpu").numpy().flatten()
             # PR curve makes sense only for 2 class classification problems
             if self.data_type == "lab_mask":
-                self.writer.add_pr_curve("recall curve", y_test, y_predicted)
+                self.writer.add_pr_curve("recall curve", y_val, y_predicted)
 
-            metrics_dictionary = self.model_tester.performance(y_test, y_predicted)
+            metrics_dictionary = self.model_valer.performance(y_val, y_predicted)
             hparam_dict = {
                 "number of epochs": self.num_epochs,
                 "number of features": self.number_of_channels,
@@ -228,11 +231,17 @@ class TrainNN:
                 "normalised": utils.load_config("TRAINING_CHOICE", "NORMALISE"),
             }
             self.writer.add_hparams(
-                hparam_dict=hparam_dict, metric_dict=metrics_dictionary, run_name=self.tb_path
+                hparam_dict=hparam_dict,
+                metric_dict=metrics_dictionary,
+                run_name=self.tb_path,
             )
-            training_info = utils.load_config("TRAINING_INFO", self.data_type.upper(), self.model_type.upper())
+            training_info = utils.load_config(
+                "TRAINING_INFO", self.data_type.upper(), self.model_type.upper()
+            )
             training_info = str(training_info)
-            self.writer.add_text(tag="model additional tuning", text_string=training_info)
+            self.writer.add_text(
+                tag="model additional tuning", text_string=training_info
+            )
             training_functions = f"Model is : {self.model}, \n Loss function is : {self.criterion}, \n Optimizer is {self.optimizer}"
             self.writer.add_text(tag="model functions", text_string=training_functions)
             self.writer.close()
