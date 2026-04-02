@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
+import copy
 
 class EarlyStopping:
-    def __init__(self, patience=5, delta=0):
+    def __init__(self, patience=20, delta=0):
         self.patience = patience
         self.delta = delta
         self.best_score = None
@@ -15,7 +16,7 @@ class EarlyStopping:
 
         if self.best_score is None:
             self.best_score = score
-            self.best_model_state = model.state_dict()
+            self.best_model_state = copy.deepcopy(model.state_dict())
         # Stop if the improvement is not good enough
         elif (
             abs(self.best_score) - abs(score)
@@ -26,7 +27,7 @@ class EarlyStopping:
                 self.early_stop = True
         else:
             self.best_score = score
-            self.best_model_state = model.state_dict()
+            self.best_model_state = copy.deepcopy(model.state_dict())
             self.counter = 0
 
     def load_best_model(self, model):

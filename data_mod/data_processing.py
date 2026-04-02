@@ -137,7 +137,8 @@ class ProcessImage:
         return snv
 
     def normalise_image_spectra(self, hsi_arr: np.ndarray) -> np.ndarray:
-        """Applies `normalise_signal` to every spectrogram of the array"""
+        """Applies `normalise_signal` to every spectrogram of the array.
+        Array can be a sequence or an image of spectrograms (2D or 3D)"""
         n_pixels = hsi_arr.shape[0]
         dimension = len(hsi_arr.shape)
         normalized = np.empty_like(hsi_arr)
@@ -146,7 +147,7 @@ class ProcessImage:
         )  # to have an advancement bar without slowing down too much operations
         for i in tqdm(
             range(0, n_pixels, chunk_size),
-            desc=f"Normalising {n_pixels} pixels",
+            desc=f"Normalising {n_pixels} " + ("pixels" if dimension == 2 else "lines"),
             unit="chunk",
         ):
             end = min(i + chunk_size, n_pixels)
@@ -189,7 +190,7 @@ class ProcessImage:
 
         return distance_map
 
-    def create_ring_array(self, lab_mask: np.ndarray) -> np.ndarray:
+    def create_class_ring_array(self, lab_mask: np.ndarray) -> np.ndarray:
         """
         :param np.ndarray lab_mask: Array filled with 0 (outside leaf), 200 (sick pixel), 255 (healthy pixel)
 
@@ -198,17 +199,35 @@ class ProcessImage:
         ring_mask  np.ndarray
             A new mask filled with 0 (outside leaf), 200 (sick pixel), 255 (healthy pixel), 100 (ring pixel)
         """
-        # All the points that are at a distance of less than 5 pixels from a sick zone
+        # All the points that are at a distance of less than 30 pixels from a sick zone
         # Select sick points, and compute the distance to them
         mask_sick = lab_mask == 200
         distance_to_1 = np.zeros_like(lab_mask, dtype=float)
         distance_to_1 = distance_transform_edt(~mask_sick)
         # color to 100 the points that are close enough to 1 (and in the leaf)
-        lab_mask[(lab_mask > 0) & (distance_to_1 <= 5) & (distance_to_1 > 0)] = 100
+        lab_mask[(lab_mask > 0) & (distance_to_1 <= 30) & (distance_to_1 > 0)] = 100
 
         return lab_mask
+    
+    def create_cont_ring_array(self, lab_mask):
+        """
+        :param np.ndarray lab_mask: Array filled with 0 (outside leaf), 200 (sick pixel), 255 (healthy pixel)
 
-    def create_ring_image_set(self):
+        Returns
+        -------
+        relative_distance : np.ndarray
+            A new mask filled with 0 (outside leaf or sick pixels), 31 * 8 (healthy pixel), 0 to 30 * 8 (ring pixel, 8 * distance to sick)
+        """
+        relative_distance = self.relative_distance_mask(lab_mask)
+        class_ring_array = self.create_class_ring_array(lab_mask)
+        relative_distance[class_ring_array == 255] = 31 * 8
+        relative_distance[class_ring_array == 100] *= 8
+        relative_distance[(class_ring_array == 200) | (class_ring_array == 0)] = 0  # sick pixels considered as outside leaf
+        relative_distance = np.round(relative_distance)
+        relative_distance = np.vectorize(np.uint8)(relative_distance)
+        return relative_distance
+
+    def create_cont_ring_image_set(self):
         """Creates a new folder with the newly created ring mask leaves"""
         path_to_folder_lab = os.path.join(
             utils.load_config("PATH", "DATA_DIR"), "Lab_Feb2025_Mask"
@@ -223,11 +242,11 @@ class ProcessImage:
                 for image in os.listdir(leaf_path):
                     leaf_name = image.split(".")[0]
                     lab_mask = open_image.lab_array(leaf_name)
-                    ring_mask = img_cleaner.create_ring_array(lab_mask)
+                    cont_ring_mask = img_cleaner.create_cont_ring_array(lab_mask)
                     save_folder = os.path.join(path_to_new_folder, leaf, side)
                     os.makedirs(save_folder, exist_ok=True)
                     save_path = os.path.join(save_folder, image)
-                    Image.fromarray(ring_mask).save(save_path)
+                    Image.fromarray(cont_ring_mask).save(save_path)
                     print(f"Saved ring new mask image at {save_path}")
 
 
@@ -260,12 +279,12 @@ if __name__ == "__main__":
 
     def test_create_ring_array():
         lab_mask = open_image.lab_array(LEAF)
-        ring_mask = img_cleaner.create_ring_array(lab_mask)
+        ring_mask = img_cleaner.create_class_ring_array(lab_mask)
         plt.imshow(ring_mask)
         plt.colorbar()
         plt.show()
 
-    test_normalise_signal()
+    # test_normalise_signal()
     # test_normalise_signal()
     # test_create_ring_array()
-    # img_cleaner.create_ring_image_set()
+    img_cleaner.create_cont_ring_image_set()

@@ -55,7 +55,7 @@ class OpenImage:
         """Returns ring mask array"""
         leaf_number, side = leaf.split("_")[0], leaf.split("_")[1]
         path = os.path.join(
-            self.data_dir, "Ring_Mask", leaf_number, side, leaf + ".png"
+            self.data_dir, "Ring_Mask_Class", leaf_number, side, leaf + ".png"
         )
         ring_img = Image.open(path)
         return np.array(ring_img)
@@ -98,3 +98,7 @@ if __name__ == "__main__":
     x, y = 150, 100
     hsi_ex = open_im.hsi_array(LEAF_NAME)
     print(f"HSI image has dimensions : {hsi_ex.shape}")
+
+    ring_ex = open_im.mask_dist_array(LEAF_NAME)
+    print(ring_ex)
+    print(np.unique(ring_ex), ring_ex.shape)

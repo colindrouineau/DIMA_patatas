@@ -154,8 +154,6 @@ class VizImage:
 
     def spectrogram_interactive_mapping(self, channel_number, leaf, normalise=False):
         hsi_arr = self.open_im.hsi_array(leaf)
-        if normalise:  # apply normalise to all pixels
-            hsi_arr = self.data_process.normalise_image_spectra(hsi_arr)
         # Select a channel to display
         channel_image = hsi_arr[:, :, channel_number]
 
@@ -206,6 +204,8 @@ class VizImage:
             # Ensure the click is within the image bounds
             if 0 <= x < hsi_arr.shape[1] and 0 <= y < hsi_arr.shape[0]:
                 spectrum = hsi_arr[y, x, :]
+                if normalise:
+                    spectrum = self.data_process.normalise_signal(spectrum)
                 spectra_data.append((x, y, spectrum))
                 color = COLORS[len(spectra_lines) % 10]
                 # Plot the new spectrum
@@ -243,11 +243,11 @@ if __name__ == "__main__":
 
     im_viz = VizImage()
 
-    CHANNEL_NUMBER = 80
+    CHANNEL_NUMBER = 8
 
     im_viz.spectrogram_interactive_mapping(CHANNEL_NUMBER, LEAF_NAME, normalise=True)
-# 
+ 
     im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER, normalise=True, threshold=1)
 
-    LEAF_NUMBER = 12
+    LEAF_NUMBER = 5
     im_viz.show_leaf_evol(LEAF_NUMBER, channel=CHANNEL_NUMBER)

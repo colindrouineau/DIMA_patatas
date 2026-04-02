@@ -2,8 +2,11 @@ import numpy as np
 import os
 from tqdm import tqdm
 from datetime import datetime
+import sys
+import shutil
 
 import torch
+from torch import jit
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
@@ -37,7 +40,9 @@ class TrainNN:
 
         self.open_im = OpenImage()
         self.data_formatter = DataFormatter()
-        self.model_valer = ModelTester()
+        self.model_tester = ModelTester(
+            model_path=None
+        )  # We don't need to load a model, just performance method
 
         if torch.cuda.is_available():
             print("The GPU is available and will be used for computation.")
@@ -45,13 +50,11 @@ class TrainNN:
             print("The GPU is NOT available.")
 
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
+        self.exp_name = self.date + "_" + self.model_type
         self.tb_path = os.path.join(
-            self.data_dir,
-            "..",
-            "runs",
-            self.data_type,
-            self.date + "_" + self.model_type,
+            self.data_dir, "..", "runs", self.data_type, self.exp_name
         )
+
         os.makedirs(self.tb_path, exist_ok=True)
         self.writer = SummaryWriter(self.tb_path)
         self.balance = utils.load_config("TRAINING_CHOICE", "BALANCE")
@@ -129,13 +132,13 @@ class TrainNN:
         X_train, y_train = self.data_formatter.load_data(
             leaf_numbers=self.train_leave_numbers
         )
-        X_train, y_train = self.data_formatter.scale_and_split_data(
+        X_train, y_train = self.data_formatter.scale_and_format_data(
             X_train, y_train, requires_grad=True
         )
         X_val, y_val = self.data_formatter.load_data(
             leaf_numbers=self.validation_leaves
         )
-        X_val, y_val = self.data_formatter.scale_and_split_data(X_val, y_val)
+        X_val, y_val = self.data_formatter.scale_and_format_data(X_val, y_val)
 
         self.define_nn_functions()
 
@@ -146,8 +149,8 @@ class TrainNN:
 
     def epoch_info(self, epoch, training_loss, val_loss):
         """Logs and prints useful information for epoch"""
-        self.writer.add_scalar("Training", training_loss, epoch + 1)
-        self.writer.add_scalar("Validation", val_loss, epoch + 1)
+        self.writer.add_scalar("Training loss", training_loss, epoch + 1)
+        self.writer.add_scalar("Validation loss", val_loss, epoch + 1)
         self.writer.add_scalar(
             "Learning_rate", self.step_lr_scheduler.get_last_lr()[0], epoch + 1
         )
@@ -178,7 +181,7 @@ class TrainNN:
         ), f"val_loss or training_loss became undefined (vloss = {val_loss}, tloss = {training_loss})"
         return training_loss, val_loss
 
-    def loop_nobatch(self):
+    def main_loop(self):
         """Main training loop. All data is loaded at once before the beginning of the loop."""
         X_train, y_train, X_val, y_val = self.loop_initialiser()
 
@@ -189,7 +192,7 @@ class TrainNN:
             self.early_stopping(val_loss, self.model)
             if self.early_stopping.early_stop:
                 print(
-                    f"Early stopping triggered at epoch {epoch}. Last (val_loss, train_loss) = {val_loss, training_loss}"
+                    f"Early stopping triggered at epoch {epoch}. Last (val_loss, train_loss) = {round(val_loss, 4), round(training_loss, 4)}"
                 )
                 break
 
@@ -199,30 +202,49 @@ class TrainNN:
         print(
             f"Final training_loss = {training_loss:.4f}, val_loss = {val_loss:.4f}, last learning rate = {self.step_lr_scheduler.get_last_lr()[0]}"
         )
+        self.model.load_state_dict(self.early_stopping.best_model_state)
+        self.model.eval()
+        self.nn_results()
+        # To save the best model found
+        self.early_stopping.load_best_model(self.model)
         self.model.save_nn(
-            self.early_stopping.best_model_state,
-            file_name=f"{self.date}_{self.model_type}-on-{self.data_type}_{self.num_epochs}epochs_lr:{self.learning_rate}_{self.number_of_channels}features_balanced:{self.balance}_.pth",
+            self.early_stopping.best_model_state, nn_trace=self.nn_trace, file_name=f"{self.exp_name}.pth"
         )
-        # self.model is not exactly the model we have saved, but it probably is a good approximation.
-        self.nn_results(self.model)
 
-    def nn_results(self, model):
+    def nn_results(self):
         """Saves model performance to tensorboard and prints it"""
         with torch.no_grad():
             # writer.add_image('mnist_images', img_grid) (to add an image
 
-            x_set, y_set = self.data_formatter.load_data(leaf_numbers=self.validation_leaves)
-            X_val, y_val = self.data_formatter.scale_and_split_data(x_set, y_set)
-            self.writer.add_graph(model, X_val)
+            x_set, y_set = self.data_formatter.load_data(
+                leaf_numbers=self.validation_leaves
+            )
+            X_val, y_val = self.data_formatter.scale_and_format_data(x_set, y_set)
+            self.writer.add_graph(self.model, X_val)
+            self.nn_trace = jit.trace(self.model, X_val)
+
             # Print model performance
-            y_predicted = model(X_val)
-            y_val = y_val.to("cpu").numpy().flatten()
-            y_predicted = y_predicted.to("cpu").numpy().flatten()
+            y_predicted = self.model(X_val)
+            y_val = y_val.to("cpu").numpy()
+            y_predicted = y_predicted.to("cpu").numpy()
+            print(f"Performance of model {self.exp_name} on validation dataset")
+            metrics_dictionary, y_predicted, y_val = self.model_tester.performance(y_val, y_predicted)
+            save = input("Do you want to save this model ? (Y/n)")
+            if save not in ["", "y", "Y"]:
+                self.writer.close()
+                log_dir = os.path.join(
+                    self.data_dir, "..", "runs", self.data_type, self.exp_name
+                )
+                confirm = input(
+                    f"You are about to delete the folder '{log_dir}' and all the files and folders it contains. Are you sure ? (type 'rm' to delete)"
+                )
+                if confirm == "rm":
+                    shutil.rmtree(log_dir)
+                sys.exit()
             # PR curve makes sense only for 2 class classification problems
             if self.data_type == "lab_mask":
                 self.writer.add_pr_curve("recall curve", y_val, y_predicted)
 
-            metrics_dictionary = self.model_valer.performance(y_val, y_predicted)
             hparam_dict = {
                 "number of epochs": self.num_epochs,
                 "number of features": self.number_of_channels,
@@ -250,4 +272,4 @@ class TrainNN:
 if __name__ == "__main__":
     # To choose training type, change CONFIG file.
     trainer = TrainNN()
-    trainer.loop_nobatch()
+    trainer.main_loop()

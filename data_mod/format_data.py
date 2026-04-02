@@ -46,6 +46,8 @@ class DataFormatter:
             lab_arr = self.open_im.lab_array(leaf)
             # Remove all pixel which have a too low max intensity. (< 0.01) (outside leaf)
             mask_lab = lab_arr > 0.01
+            # label = 1 if the pixel is sick, 0 otherwise
+            lab_arr = np.where(lab_arr == 200, 1, 0)
         if self.data_type == "dist_mask":
             lab_arr = self.open_im.mask_dist_array(leaf)
             mask_lab = (
@@ -62,9 +64,6 @@ class DataFormatter:
             return lab_arr, leaf_mask
         x_leaf_pixels = hsi_array[leaf_mask]
         y_leaf_labels = lab_arr[leaf_mask]
-        if self.data_type == "lab_mask":
-            # label = 1 if the pixel is sick, 0 otherwise
-            y_leaf_labels = np.where(y_leaf_labels == 200, 1, 0)
 
         return x_leaf_pixels, y_leaf_labels
 
@@ -89,15 +88,9 @@ class DataFormatter:
         dimension = len(arr.shape)
         # for lab_mask label
         # check if the labeling is continuous or 0,1
-        if dimension == 1 and self.data_type == "lab_mask":
-            category = list(np.unique(arr).astype(int)) == [0, 1]
-            if category:
-                # put y_pred to 0, 200, 255 format like y_real
-                arr = np.where(arr == 1, 200, 255)
-            else:
-                # 0 = out of leaf. Fill the whole possible range of values ([0,255])
-                min_value = 20
-                arr = arr / np.max(arr) * (255 - min_value) + min_value
+        if dimension == 1:
+            arr = self.make_leaf_visible(arr)
+            y_real[leaf_mask] = self.make_leaf_visible(y_real[leaf_mask])
             to_leaf_form = np.zeros((height, width))
         elif dimension == 2:
             bands = arr.shape[1]
@@ -114,6 +107,17 @@ class DataFormatter:
                 to_leaf_form[x, y, :] = element
 
         return y_real, to_leaf_form
+
+    def make_leaf_visible(self, y):
+        category = list(np.unique(y).astype(int)) == [0, 1]
+        if category:
+            # put y_pred to 0, 200, 255 format like y_real
+            y = np.where(y == 1, 200, 255)
+        else:
+            # 0 = out of leaf. Fill the whole possible range of values ([0,255])
+            min_value = 20
+            y = y / np.max(y) * (255 - min_value) + min_value
+        return y
 
     def load_data(self, channels=None, leaf_numbers=None):
         """Load data.
@@ -154,7 +158,7 @@ class DataFormatter:
         x_set, y_set = shuffle(x_set, y_set)
         if self.data_type == "ring_mask":
             # Creates 3 categories fit for entropy loss function.
-            y_tuple = np.zeros((y_set.shape[0], 3), dtype=np.int8)
+            y_tuple = np.zeros((y_set.shape[0], 3), dtype=np.uint8)
             y_tuple[:, 0] = y_set == 255  # healthy
             y_tuple[:, 1] = y_set == 100  # ring
             y_tuple[:, 2] = y_set == 200  # sick
@@ -202,8 +206,14 @@ class DataFormatter:
 
         return x[suffle_idx], y[suffle_idx]
 
-    def scale_and_split_data(
-        self, x_set, y_set, to_tensor=True, scale=True, requires_grad: bool = False, normalise=utils.load_config("TRAINING_CHOICE", "NORMALISE")
+    def scale_and_format_data(
+        self,
+        x_set,
+        y_set,
+        to_tensor=True,
+        scale=True,
+        requires_grad: bool = False,
+        normalise=utils.load_config("TRAINING_CHOICE", "NORMALISE"),
     ) -> tuple:
         """Fits the data for Neural Network training. Optional parameters to specify data type and transformation."""
         # Add duplicates in the training set to have 50/50 distribution of sick/non sick pixels
@@ -236,4 +246,4 @@ if __name__ == "__main__":
     from data_mod.viz_image import VizImage
 
     visualise = VizImage()
-    visualise.plot_y_real_pred(y_real, y_pred, title="test only real : " +LEAF_NAME)
+    visualise.plot_y_real_pred(y_real, y_pred, title="test only real : " + LEAF_NAME)

@@ -8,6 +8,7 @@ from data_mod.format_data import DataFormatter
 from algo.test_model import ModelTester
 import utils
 from algo.tree_forest import DecisionTree, RandomForest
+from joblib import load
 
 
 class TrainTree:
@@ -47,7 +48,7 @@ class TrainTree:
         x_set, y_set = self.data_formatter.load_data(
             channels=self.tree_channels, leaf_numbers=self.train_leave_numbers
         )
-        X_train, y_train = self.data_formatter.scale_and_split_data(
+        X_train, y_train = self.data_formatter.scale_and_format_data(
             x_set, y_set, to_tensor=False, scale=False, normalise=False
         )
         # Create Decision Tree classifer object
@@ -65,7 +66,7 @@ class TrainTree:
         x_set, y_set = self.data_formatter.load_data(
             channels=self.tree_channels, leaf_numbers=self.validation_leaves
         )
-        X_val, y_val = self.data_formatter.scale_and_split_data(
+        X_val, y_val = self.data_formatter.scale_and_format_data(
             x_set, y_set, to_tensor=False, scale=False, normalise=False
         )
         y_pred = clf.predict(X_val)
@@ -113,7 +114,7 @@ class TrainForest:
         x_set, y_set = self.data_formatter.load_data(
             channels=self.forest_channels, leaf_numbers=self.train_leave_numbers
         )
-        X_train, y_train = self.data_formatter.scale_and_split_data(
+        X_train, y_train = self.data_formatter.scale_and_format_data(
             x_set, y_set, to_tensor=False, scale=False
         )
         rf_classifier = RandomForest(n_estimators=self.n_estimators)
@@ -126,13 +127,90 @@ class TrainForest:
         x_set, y_set = self.data_formatter.load_data(
             channels=self.forest_channels, leaf_numbers=self.validation_leaves
         )
-        X_val, y_val = self.data_formatter.scale_and_split_data(
+        X_val, y_val = self.data_formatter.scale_and_format_data(
             x_set, y_set, to_tensor=False, scale=False
         )
         y_pred = rf_classifier.predict(X_val)
         classification_rep = classification_report(y_val, y_pred)
 
         print("Classification Report:\n", classification_rep)
+
+    def tree_perf(self):
+        """Prints performance of all the saved decision tree models"""
+        models_dir = os.path.join(self.data_dir, "..", "model_backup", "tree")
+        model_names = os.listdir(models_dir)
+        for model_name in model_names:
+            channels = utils.get_channels_from_name(model_name)
+            x_set, y_set = self.data_formatter.load_data(
+                channels=channels, leaf_numbers=self.val_leaves
+            )
+            X_val, y_val = self.data_formatter.scale_and_format_data(
+                x_set, y_set, to_tensor=False, scale=False
+            )
+            self.one_tree_perf(model_name, X_val, y_val)
+
+
+class Tester:
+    def one_tree_perf(self, model_name, X_val, y_val):
+        models_dir = os.path.join(self.data_dir, "..", "model_backup", "tree")
+        model_path = os.path.join(models_dir, model_name)
+        # Load the saved model
+        loaded_model_joblib = load(model_path)
+        try:
+            print(f"performance of model {model_name} :")
+            y_predicted = loaded_model_joblib.predict(X_val)
+            y_val = y_val.flatten()
+            y_predicted = y_predicted.flatten()
+            self.performance_2class(y_val, y_predicted)
+            print()
+        except Exception as e:
+            print(e)
+        finally:
+            return y_predicted
+
+    def one_forest_perf(self, model_name, X_val, y_val):
+        models_dir = os.path.join(self.data_dir, "..", "model_backup", "rd_forest")
+        model_path = os.path.join(models_dir, model_name)
+        # Load the saved model
+        loaded_model_joblib = load(model_path)
+        try:
+            print(f"performance of model {model_name} :")
+            y_pred = loaded_model_joblib.predict(X_val)
+            y_val = y_val.flatten()
+            y_pred = y_pred.flatten()
+            print(
+                "Classification Report:\n",
+                metrics.classification_report(y_val, y_pred),
+            )
+        except Exception as e:
+            print(e)
+        finally:
+            return y_pred
+
+    if model_extension == "joblib":
+        channels = utils.load_config(
+            "TRAINING_INFO",
+            self.data_type.upper(),
+            self.model_type.upper(),
+            "CHANNELS",
+        )
+        X_val, y_val = self.data_formatter.leaf_mask_data(leaf)
+        X_val, y_val = self.data_formatter.scale_and_format_data(
+            X_val, y_val, scale=False, to_tensor=False
+        )
+        X_val = X_val[:, channels]
+        if self.model_type == "TREE":
+            y_pred = self.one_tree_perf(model_name, X_val, y_val)
+            y_leaf, y_pred = self.data_formatter.reconstitute_leaf(leaf, y_pred)
+            self.visualise.plot_y_real_pred(
+                y_leaf, y_pred, title=leaf + ", model : tree"
+            )
+        if self.model_type == "RANDOM_FOREST":
+            y_pred = self.one_forest_perf(model_name, X_val, y_val)
+            y_leaf, y_pred = self.data_formatter.reconstitute_leaf(leaf, y_pred)
+            self.visualise.plot_y_real_pred(
+                y_leaf, y_pred, title=leaf + ", model : random forest"
+            )
 
 
 if __name__ == "__main__":
