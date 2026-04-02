@@ -21,8 +21,8 @@ class DataAnalyse:
         x_set, y_set = self.format_data.load_data(leaf_numbers=utils.leaf_no_test())
         # normalise data
         ### TO BE TAKEN OFF
-        x_set = x_set[:10000, :]
-        y_set = y_set[:10000]
+        x_set = x_set[:100000, :]
+        y_set = y_set[:100000]
         ### TO BE TAKEN OFF
         if normalise:
             x_set = self.data_process.normalise_image_spectra(x_set)
@@ -38,6 +38,7 @@ class DataAnalyse:
         NUMBER_OF_IMPORTANT_CHANNELS = 25
         important_channels = channel_order[-NUMBER_OF_IMPORTANT_CHANNELS:]
         important_difference = difference[important_channels]
+        important_difference = [float(round(idif, 4)) for idif in important_difference]
         print("The important channels are : ", important_channels[::-1])
         print("The corresponding |healthy_mean - sick_mean| : ", important_difference[::-1])
 

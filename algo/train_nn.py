@@ -9,6 +9,7 @@ import torch
 from torch import jit
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 
 from data_mod.open_image import OpenImage
@@ -133,19 +134,25 @@ class TrainNN:
             leaf_numbers=self.train_leave_numbers
         )
         X_train, y_train = self.data_formatter.scale_and_format_data(
-            X_train, y_train, requires_grad=True
+            X_train, y_train, to_device=False
         )
         X_val, y_val = self.data_formatter.load_data(
             leaf_numbers=self.validation_leaves
         )
-        X_val, y_val = self.data_formatter.scale_and_format_data(X_val, y_val)
+        X_val, y_val = self.data_formatter.scale_and_format_data(X_val, y_val, to_device=False)
 
         self.define_nn_functions()
 
         print(
             f"train set shape = {X_train.shape}; validation set shape =  {X_val.shape}"
         )
-        return X_train, y_train, X_val, y_val
+        BATCH_SIZE = utils.load_config("DATA", "BATCH_SIZE")
+        train_dataset = TensorDataset(X_train, y_train)
+        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, num_workers=12, persistent_workers=True, pin_memory=True)
+        val_dataset = TensorDataset(X_val, y_val)
+        val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, num_workers=12, persistent_workers=True, pin_memory=True)
+
+        return train_loader, val_loader
 
     def epoch_info(self, epoch, training_loss, val_loss):
         """Logs and prints useful information for epoch"""
@@ -159,34 +166,49 @@ class TrainNN:
                 f"epoch: {epoch+1}, training_loss = {training_loss:.4f}, val_loss = {val_loss:.4f}, lr = {self.step_lr_scheduler.get_last_lr()[0]:.4f}"
             )
 
-    def one_epoch(self, X_train, y_train, X_val, y_val):
-        # validation
-        self.model.eval()
-        with torch.no_grad():
-            y_pred_val = self.model(X_val)
-            val_loss = self.criterion(y_pred_val, y_val).item()
-        # Train
-        self.model.train(True)
-        y_pred = self.model(X_train)
-        loss = self.criterion(y_pred, y_train)
-        training_loss = loss.item()
+    def one_epoch(self, train_loader, val_loader):
+        # Each epoch has a training and validation phase
+        training_loss, val_loss = 0, 0
+        for phase in ["train", "val"]:
+            if phase == "train":
+                self.model.train()  # Set model to training mode
+                dataloader = train_loader
+            else:
+                self.model.eval()  # Set model to evaluate mode
+                dataloader = val_loader
 
-        loss.backward()
-        self.step_lr_scheduler.step(val_loss)
-        self.optimizer.step()
-        self.optimizer.zero_grad()
+            running_loss = 0.0
 
-        assert not bool(np.isnan(training_loss)) and not bool(
-            np.isnan(val_loss)
-        ), f"val_loss or training_loss became undefined (vloss = {val_loss}, tloss = {training_loss})"
+            for X, y_real in dataloader:
+                X = X.to(self.device)
+                y_real = y_real.to(self.device)
+                with torch.set_grad_enabled(phase == "train"):
+                    y_pred = self.model(X)
+                    loss = self.criterion(y_pred, y_real)
+
+                    if phase == "train":
+                        self.optimizer.zero_grad()
+                        loss.backward()
+                        self.optimizer.step()
+                # statistics
+                running_loss += loss.item() * X.size(0)
+            
+            epoch_loss = running_loss / len(dataloader)
+
+            if phase == "train":
+                training_loss = epoch_loss
+                self.step_lr_scheduler.step(training_loss)
+            else:
+                val_loss = epoch_loss
+
         return training_loss, val_loss
 
     def main_loop(self):
         """Main training loop. All data is loaded at once before the beginning of the loop."""
-        X_train, y_train, X_val, y_val = self.loop_initialiser()
+        train_loader, val_loader = self.loop_initialiser()
 
         for epoch in tqdm(range(self.num_epochs), desc="training", unit="epoch"):
-            training_loss, val_loss = self.one_epoch(X_train, y_train, X_val, y_val)
+            training_loss, val_loss = self.one_epoch(train_loader, val_loader)
             self.epoch_info(epoch, training_loss, val_loss)
             # Check early stopping
             self.early_stopping(val_loss, self.model)
@@ -208,7 +230,9 @@ class TrainNN:
         # To save the best model found
         self.early_stopping.load_best_model(self.model)
         self.model.save_nn(
-            self.early_stopping.best_model_state, nn_trace=self.nn_trace, file_name=f"{self.exp_name}.pth"
+            self.early_stopping.best_model_state,
+            nn_trace=self.nn_trace,
+            file_name=f"{self.exp_name}.pth",
         )
 
     def nn_results(self):
@@ -228,7 +252,9 @@ class TrainNN:
             y_val = y_val.to("cpu").numpy()
             y_predicted = y_predicted.to("cpu").numpy()
             print(f"Performance of model {self.exp_name} on validation dataset")
-            metrics_dictionary, y_predicted, y_val = self.model_tester.performance(y_val, y_predicted)
+            metrics_dictionary, y_predicted, y_val = self.model_tester.performance(
+                y_val, y_predicted
+            )
             save = input("Do you want to save this model ? (Y/n)")
             if save not in ["", "y", "Y"]:
                 self.writer.close()

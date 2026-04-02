@@ -214,6 +214,7 @@ class DataFormatter:
         scale=True,
         requires_grad: bool = False,
         normalise=utils.load_config("TRAINING_CHOICE", "NORMALISE"),
+        to_device=True
     ) -> tuple:
         """Fits the data for Neural Network training. Optional parameters to specify data type and transformation."""
         # Add duplicates in the training set to have 50/50 distribution of sick/non sick pixels
@@ -225,12 +226,15 @@ class DataFormatter:
             sc = StandardScaler()
             x_set = sc.fit_transform(x_set)
         if to_tensor:
-            x_set = torch.from_numpy(x_set.astype(np.float32)).to(self.device)
-            y_set = torch.from_numpy(y_set.astype(np.float32)).to(self.device)
+            x_set = torch.from_numpy(x_set.astype(np.float32)) 
+            y_set = torch.from_numpy(y_set.astype(np.float32)) 
             dim2 = 1 if len(y_set.shape) == 1 else y_set.shape[1]
             y_set = y_set.view(y_set.shape[0], dim2)
         if requires_grad:
             x_set.requires_grad_(True)
+        if to_device:
+            x_set = x_set.to(self.device)
+            y_set = y_set.to(self.device)
 
         return x_set, y_set
 

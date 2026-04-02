@@ -11,21 +11,22 @@ DATA :
   TEST_LEAVES : [1, 3, 7, 12]
   VALIDATION_LEAVES : [2, 4, 8, 11]
   NUMBER_OF_LEAVES : 17
+  BATCH_SIZE : 8192 
 
 TRAINING_CHOICE :
   DATA_TYPE : "lab_mask"   # dist_mask, ring_mask, lab_mask
-  MODEL_TYPE : "MLP"  # "MLP"  # or "TREE"
+  MODEL_TYPE : "MLP"  # "MLP", "TREE"
   BALANCE : False # proportion of sick pixels after transformation. no balance : False  # MAKES SENSE ONLY FOR CLASSIFICATION
   NORMALISE : False
 
 TRAINING_INFO :
-  DEVICE : "cuda"  # or "cpu"
+  DEVICE : "cpu"  # "cuda", "cpu"
   # for Neural Networks
   LAB_MASK :
     MLP :
-      NUM_EPOCHS : 1000
+      NUM_EPOCHS : 8
       HIDDEN_SIZE : 70 
-      LEARNING_RATE : 0.2
+      LEARNING_RATE : 0.05
       FACTOR : 0.5
       PATIENCE : 20
       THRESHOLD : 0.001

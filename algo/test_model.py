@@ -207,7 +207,7 @@ class ModelTester:
 
 
 if __name__ == "__main__":
-    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/lab_mask/02-04--11:22_MLP.pth"
+    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../whole_model_backup/lab_mask/02-04--16:22_MLP.zip"
     model_tester = ModelTester(model_path=MODEL_PATH_MLP, round_labels=True)
 
     LEAF = "foliolo2_enves_a9"
