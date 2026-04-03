@@ -127,8 +127,11 @@ class ProcessImage:
                 self.cut_stem_image(os.path.join(leaf_path, image))
 
     def normalise_signal(self, X: np.ndarray) -> np.ndarray:
-        """smooths and applies SNV to the X signal"""
-        smoothed = savgol_filter(X, window_length=7, polyorder=3)
+        """smooths and applies SNV to the X signal
+        
+        UPDATE : savgol filter is no longer used because of its computation time and because it is not deemed necessary"""
+        #smoothed = savgol_filter(X, window_length=7, polyorder=3)
+        smoothed = X
         std = np.std(smoothed)
         if std == 0:
             snv = np.zeros(len(X))

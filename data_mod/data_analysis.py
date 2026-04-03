@@ -38,6 +38,7 @@ class DataAnalyse:
         NUMBER_OF_IMPORTANT_CHANNELS = 25
         important_channels = channel_order[-NUMBER_OF_IMPORTANT_CHANNELS:]
         important_difference = difference[important_channels]
+        important_difference = [float(round(idif, 4)) for idif in important_difference]
         print("The important channels are : ", important_channels[::-1])
         print("The corresponding |healthy_mean - sick_mean| : ", important_difference[::-1])
 
