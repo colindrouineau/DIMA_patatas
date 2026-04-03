@@ -134,12 +134,12 @@ class TrainNN:
             leaf_numbers=self.train_leave_numbers
         )
         X_train, y_train = self.data_formatter.scale_and_format_data(
-            X_train, y_train, to_device=False
+            X_train, y_train, to_device=True
         )
         X_val, y_val = self.data_formatter.load_data(
             leaf_numbers=self.validation_leaves
         )
-        X_val, y_val = self.data_formatter.scale_and_format_data(X_val, y_val, to_device=False)
+        X_val, y_val = self.data_formatter.scale_and_format_data(X_val, y_val, to_device=True)
 
         self.define_nn_functions()
 
@@ -148,9 +148,9 @@ class TrainNN:
         )
         BATCH_SIZE = utils.load_config("DATA", "BATCH_SIZE")
         train_dataset = TensorDataset(X_train, y_train)
-        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, num_workers=12, persistent_workers=True, pin_memory=True)
+        train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, num_workers=0)
         val_dataset = TensorDataset(X_val, y_val)
-        val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, num_workers=12, persistent_workers=True, pin_memory=True)
+        val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, num_workers=0)
 
         return train_loader, val_loader
 
@@ -180,8 +180,6 @@ class TrainNN:
             running_loss = 0.0
 
             for X, y_real in dataloader:
-                X = X.to(self.device)
-                y_real = y_real.to(self.device)
                 with torch.set_grad_enabled(phase == "train"):
                     y_pred = self.model(X)
                     loss = self.criterion(y_pred, y_real)
@@ -193,7 +191,7 @@ class TrainNN:
                 # statistics
                 running_loss += loss.item() * X.size(0)
             
-            epoch_loss = running_loss / len(dataloader)
+            epoch_loss = running_loss / len(dataloader.dataset)
 
             if phase == "train":
                 training_loss = epoch_loss

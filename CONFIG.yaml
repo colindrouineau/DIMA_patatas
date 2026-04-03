@@ -11,7 +11,7 @@ DATA :
   TEST_LEAVES : [1, 3, 7, 12]
   VALIDATION_LEAVES : [2, 4, 8, 11]
   NUMBER_OF_LEAVES : 17
-  BATCH_SIZE : 8192 
+  BATCH_SIZE : 200000 
 
 TRAINING_CHOICE :
   DATA_TYPE : "lab_mask"   # dist_mask, ring_mask, lab_mask
@@ -20,7 +20,7 @@ TRAINING_CHOICE :
   NORMALISE : False
 
 TRAINING_INFO :
-  DEVICE : "cpu"  # "cuda", "cpu"
+  DEVICE : "cuda"  # "cuda", "cpu"
   # for Neural Networks
   LAB_MASK :
     MLP :
