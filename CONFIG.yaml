@@ -4,34 +4,39 @@ PATH :
   DATA_DIR : "/home/colind/work/Mines/TR_DIMA/DIMA_code/data"
 
 DATA :
+  # immutable
   TOTAL_N_CHANNELS : 111
-  NUMBER_OF_CHANNELS : 40
-
   TEST_SIZE : 0.15 # for random train/test split
   TEST_LEAVES : [1, 3, 7, 12]
   VALIDATION_LEAVES : [2, 4, 8, 11]
   NUMBER_OF_LEAVES : 17
+  # custom
+  NUMBER_OF_CHANNELS : 55
+  CONT_RING_LIM_DIST : 15
+
 
 TRAINING_CHOICE :
-  DATA_TYPE : "lab_mask"   # dist_mask, ring_mask, lab_mask
+  DATA_TYPE : "lab_mask"   # dist_mask, ring_mask, lab_mask, ring_mask_cont, ring_mask_only
   MODEL_TYPE : "MLP"  # "MLP"  # or "TREE"
   BALANCE : False # proportion of sick pixels after transformation. no balance : False  # MAKES SENSE ONLY FOR CLASSIFICATION
   NORMALISE : False
+  # CHANNELS : null # [59,58,60,57,31,30,61,56,32,29,33,28,34,10,11,16,17,15,9,27,68,18,12,67,14]  # 25 important channels between ring and healthy. None if automatic selection.
+   # Standard gaussian noise factor.
 
 TRAINING_INFO :
   DEVICE : "cuda"  # or "cpu"
   # for Neural Networks
   LAB_MASK :
     MLP :
-      NUM_EPOCHS : 1000
-      HIDDEN_SIZE : 70 
+      NUM_EPOCHS : 7000
       LEARNING_RATE : 0.2
       FACTOR : 0.5
-      PATIENCE : 20
-      THRESHOLD : 0.001
-      LABEL_THRESHOLD : 0.75
-      DELTA : 0.0001
-    
+      PATIENCE : 100
+      LABEL_THRESHOLD : 0.9
+      DELTA : 0.0000005
+      CHANNELS : null # [0,1,2,3,4,64,65,5,63,66,67,62,6,68,61,69,7,70,71,60,28,27,29,110,8,72,26,109,30,108,25,107,59,106,73,31,105,100,101,104,99,102,9,103,98,24,74,97,32,58,96,95,75,10,57]
+      NOISE : 0.001
+
     TREE :
       # for decision tree
       MAX_DEPTH : 4  # For no limit : null
@@ -62,4 +67,23 @@ TRAINING_INFO :
       LABEL_THRESHOLD : 0.75
       DELTA : 0.0001      
 
-  
+  RING_MASK_CONT:
+    MLP :
+      NUM_EPOCHS : 1000
+      LEARNING_RATE : 0.3
+      FACTOR : 0.5
+      PATIENCE : 20
+      THRESHOLD : 0.001
+      LABEL_THRESHOLD : 0.75
+      DELTA : 0.0001  
+
+  RING_MASK_ONLY:
+    MLP :
+      NUM_EPOCHS : 1000
+      HIDDEN_SIZE : 50 
+      LEARNING_RATE : 0.3
+      FACTOR : 0.5
+      PATIENCE : 20
+      THRESHOLD : 0.001
+      LABEL_THRESHOLD : 0.3
+      DELTA : 0.0001      

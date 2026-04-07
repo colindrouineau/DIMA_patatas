@@ -13,6 +13,7 @@ class ProcessImage:
 
     def __init__(self):
         self.save_dir = "/home/colind/work/Mines/TR_DIMA/DIMA_code/SAVE"
+        self.cont_ring_dist = utils.load_config("DATA", "CONT_RING_LIM_DIST")
 
     def cut_in_line(self, path: str, p1: tuple, p2: tuple, side: str, inplace=False):
         """Cut (put to 0) the part of the image which is on side `side` of the line crossing `p1` and `p2`"""
@@ -202,13 +203,13 @@ class ProcessImage:
         ring_mask  np.ndarray
             A new mask filled with 0 (outside leaf), 200 (sick pixel), 255 (healthy pixel), 100 (ring pixel)
         """
-        # All the points that are at a distance of less than 30 pixels from a sick zone
+        # All the points that are at a distance of less than self.cont_ring_dist pixels from a sick zone
         # Select sick points, and compute the distance to them
         mask_sick = lab_mask == 200
         distance_to_1 = np.zeros_like(lab_mask, dtype=float)
         distance_to_1 = distance_transform_edt(~mask_sick)
         # color to 100 the points that are close enough to 1 (and in the leaf)
-        lab_mask[(lab_mask > 0) & (distance_to_1 <= 30) & (distance_to_1 > 0)] = 100
+        lab_mask[(lab_mask > 0) & (distance_to_1 <= self.cont_ring_dist) & (distance_to_1 > 0)] = 100
 
         return lab_mask
     
@@ -223,8 +224,9 @@ class ProcessImage:
         """
         relative_distance = self.relative_distance_mask(lab_mask)
         class_ring_array = self.create_class_ring_array(lab_mask)
-        relative_distance[class_ring_array == 255] = 31 * 8
-        relative_distance[class_ring_array == 100] *= 8
+        multiplier = 255 // (self.cont_ring_dist + 1)
+        relative_distance[class_ring_array == 255] = (self.cont_ring_dist + 1) * multiplier
+        relative_distance[class_ring_array == 100] *= multiplier
         relative_distance[(class_ring_array == 200) | (class_ring_array == 0)] = 0  # sick pixels considered as outside leaf
         relative_distance = np.round(relative_distance)
         relative_distance = np.vectorize(np.uint8)(relative_distance)

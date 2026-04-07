@@ -10,10 +10,17 @@ from torch import jit
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.tensorboard import SummaryWriter
+from sklearn import metrics
 
 from data_mod.open_image import OpenImage
 from data_mod.format_data import DataFormatter
-from algo.nn_models import BinPixNN, DistPixNN, RingPixNN
+from algo.nn_models import (
+    BinPixNN,
+    DistPixNN,
+    RingPix3ClassNN,
+    RingContPixNN,
+    RingPixOnlyNN,
+)
 from algo.test_model import ModelTester
 import utils
 import algo.train_utils as train_utils
@@ -67,21 +74,24 @@ class TrainNN:
         self.learning_rate = training_info["LEARNING_RATE"]
         self.num_epochs = training_info["NUM_EPOCHS"]
         self.delta = training_info["DELTA"]
+        self.threshold = training_info["LABEL_THRESHOLD"]
+        self.last_f1_score = 0
 
     def define_mlp_bin_functions(self):
         training_info = utils.load_config("TRAINING_INFO", "LAB_MASK", "MLP")
         self.model = BinPixNN().to(self.device)
-        # self.criterion = nn.BCELoss()
-        self.criterion = train_utils.FocalLoss(alpha=1, gamma=2)
+        self.criterion = nn.BCELoss()
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
         self.step_lr_scheduler = ReduceLROnPlateau(
             self.optimizer,
             "min",
             factor=training_info["FACTOR"],
             patience=training_info["PATIENCE"],
-            threshold=training_info["THRESHOLD"],
+            threshold=training_info["DELTA"],
         )
-        self.early_stopping = train_utils.EarlyStopping(patience=10, delta=self.delta)
+        self.early_stopping = train_utils.EarlyStopping(
+            patience=training_info["PATIENCE"], delta=self.delta
+        )
 
     def define_mlp_dist_functions(self):
         training_info = utils.load_config("TRAINING_INFO", "DIST_MASK", "MLP")
@@ -99,7 +109,7 @@ class TrainNN:
 
     def define_mlp_ring_functions(self):
         training_info = utils.load_config("TRAINING_INFO", "RING_MASK", "MLP")
-        self.model = RingPixNN().to(self.device)
+        self.model = RingPix3ClassNN().to(self.device)
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
         self.step_lr_scheduler = ReduceLROnPlateau(
@@ -111,6 +121,35 @@ class TrainNN:
         )
         self.early_stopping = train_utils.EarlyStopping(patience=100, delta=self.delta)
 
+    def define_mlp_cont_ring_functions(self):
+        training_info = utils.load_config("TRAINING_INFO", "DIST_MASK", "MLP")
+        self.model = RingContPixNN().to(self.device)
+        self.criterion = nn.MSELoss()
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        self.step_lr_scheduler = ReduceLROnPlateau(
+            self.optimizer,
+            "min",
+            factor=training_info["FACTOR"],
+            patience=training_info["PATIENCE"],
+            threshold=training_info["THRESHOLD"],
+        )
+        self.early_stopping = train_utils.EarlyStopping(patience=100, delta=self.delta)
+
+    def define_mlp_ringonly_functions(self):
+        training_info = utils.load_config("TRAINING_INFO", "LAB_MASK", "MLP")
+        self.model = RingPixOnlyNN().to(self.device)
+        # self.criterion = nn.BCELoss()
+        self.criterion = train_utils.FocalLoss(alpha=1, gamma=2)
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        self.step_lr_scheduler = ReduceLROnPlateau(
+            self.optimizer,
+            "min",
+            factor=training_info["FACTOR"],
+            patience=training_info["PATIENCE"],
+            threshold=training_info["THRESHOLD"],
+        )
+        self.early_stopping = train_utils.EarlyStopping(patience=10, delta=self.delta)
+
     def define_nn_functions(self):
         """Sets model, criterion, optimizer, lr_scheduler as attributes"""
         if self.model_type == "MLP" and self.data_type == "lab_mask":
@@ -119,6 +158,10 @@ class TrainNN:
             self.define_mlp_dist_functions()
         if self.model_type == "MLP" and self.data_type == "ring_mask":
             self.define_mlp_ring_functions()
+        if self.model_type == "MLP" and self.data_type == "ring_mask_cont":
+            self.define_mlp_cont_ring_functions()
+        if self.model_type == "MLP" and self.data_type == "ring_mask_only":
+            self.define_mlp_ringonly_functions()
 
         # step_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.97)
 
@@ -138,7 +181,9 @@ class TrainNN:
         X_val, y_val = self.data_formatter.load_data(
             leaf_numbers=self.validation_leaves
         )
-        X_val, y_val = self.data_formatter.scale_and_format_data(X_val, y_val)
+        X_val, y_val = self.data_formatter.scale_and_format_data(
+            X_val, y_val, scale=True
+        )
 
         self.define_nn_functions()
 
@@ -147,17 +192,39 @@ class TrainNN:
         )
         return X_train, y_train, X_val, y_val
 
-    def epoch_info(self, epoch, training_loss, val_loss):
+    def epoch_info(self, epoch, epoch_result):
         """Logs and prints useful information for epoch"""
+        training_loss, val_loss, (y_train, y_pred), (y_val, y_pred_val) = epoch_result
         self.writer.add_scalar("Training loss", training_loss, epoch + 1)
         self.writer.add_scalar("Validation loss", val_loss, epoch + 1)
         self.writer.add_scalar(
             "Learning_rate", self.step_lr_scheduler.get_last_lr()[0], epoch + 1
         )
-        if (epoch + 1) % (max(self.num_epochs // 30, 1)) == 0 or epoch == 0:
+        if (epoch + 1) % (max(self.num_epochs // 60, 1)) == 0 or epoch == 0:
+            with torch.no_grad():
+                y_pred_round = np.where(
+                    y_pred.to("cpu").numpy() <= self.threshold, 0, 1
+                )
+                y_pred_val_round = np.where(
+                    y_pred_val.to("cpu").numpy() <= self.threshold, 0, 1
+                )
+                f1_score_training = metrics.f1_score(
+                    y_true=y_train.to("cpu"), y_pred=y_pred_round
+                )
+                f1_score_val = metrics.f1_score(
+                    y_true=y_val.to("cpu"), y_pred=y_pred_val_round
+                )
+            self.writer.add_scalar("F1 score training", f1_score_training, epoch + 1)
+            self.writer.add_scalar("F1 score validation", f1_score_val, epoch + 1)
             print(
                 f"epoch: {epoch+1}, training_loss = {training_loss:.4f}, val_loss = {val_loss:.4f}, lr = {self.step_lr_scheduler.get_last_lr()[0]:.4f}"
             )
+            print(
+                f"F1 score on : training data = {f1_score_training:.4f}, validation data = {f1_score_val:.4f}"
+            )
+            if self.last_f1_score != 0 and f1_score_val < self.last_f1_score:
+                self.early_stopping.early_stop = True  # The F1 score has stopped increasing
+            self.last_f1_score = f1_score_val
 
     def one_epoch(self, X_train, y_train, X_val, y_val):
         # validation
@@ -179,22 +246,27 @@ class TrainNN:
         assert not bool(np.isnan(training_loss)) and not bool(
             np.isnan(val_loss)
         ), f"val_loss or training_loss became undefined (vloss = {val_loss}, tloss = {training_loss})"
-        return training_loss, val_loss
+        return training_loss, val_loss, (y_train, y_pred), (y_val, y_pred_val)
 
     def main_loop(self):
         """Main training loop. All data is loaded at once before the beginning of the loop."""
         X_train, y_train, X_val, y_val = self.loop_initialiser()
-
-        for epoch in tqdm(range(self.num_epochs), desc="training", unit="epoch"):
-            training_loss, val_loss = self.one_epoch(X_train, y_train, X_val, y_val)
-            self.epoch_info(epoch, training_loss, val_loss)
-            # Check early stopping
-            self.early_stopping(val_loss, self.model)
-            if self.early_stopping.early_stop:
-                print(
-                    f"Early stopping triggered at epoch {epoch}. Last (val_loss, train_loss) = {round(val_loss, 4), round(training_loss, 4)}"
-                )
-                break
+        try:
+            for epoch in tqdm(range(self.num_epochs), desc="training", unit="epoch"):
+                epoch_result = self.one_epoch(X_train, y_train, X_val, y_val)
+                self.epoch_info(epoch, epoch_result)
+                training_loss, val_loss = epoch_result[0:2]
+                # Check early stopping
+                self.early_stopping(val_loss, self.model)
+                if self.early_stopping.early_stop:
+                    print(
+                        f"Early stopping triggered at epoch {epoch}. Last (val_loss, train_loss) = {round(val_loss, 4), round(training_loss, 4)}"
+                    )
+                    break
+        except KeyboardInterrupt:
+            print(
+                f"Training was interrupted by user. The model will be saved in its last state."
+            )
 
         self.end_loop(training_loss, val_loss)
 
@@ -208,7 +280,9 @@ class TrainNN:
         # To save the best model found
         self.early_stopping.load_best_model(self.model)
         self.model.save_nn(
-            self.early_stopping.best_model_state, nn_trace=self.nn_trace, file_name=f"{self.exp_name}.pth"
+            self.early_stopping.best_model_state,
+            nn_trace=self.nn_trace,
+            file_name=f"{self.exp_name}.pth",
         )
 
     def nn_results(self):
@@ -228,21 +302,25 @@ class TrainNN:
             y_val = y_val.to("cpu").numpy()
             y_predicted = y_predicted.to("cpu").numpy()
             print(f"Performance of model {self.exp_name} on validation dataset")
-            metrics_dictionary, y_predicted, y_val = self.model_tester.performance(y_val, y_predicted)
+            metrics_dictionary, y_predicted, y_val = self.model_tester.performance(
+                y_val, y_predicted
+            )
             save = input("Do you want to save this model ? (Y/n)")
             if save not in ["", "y", "Y"]:
-                self.writer.close()
                 log_dir = os.path.join(
                     self.data_dir, "..", "runs", self.data_type, self.exp_name
                 )
                 confirm = input(
-                    f"You are about to delete the folder '{log_dir}' and all the files and folders it contains. Are you sure ? (type 'rm' to delete)"
+                    f"You are about to forget this model and delete the folder '{log_dir}' and all the files and folders it contains. Are you sure ? (type 'rm' to delete)"
                 )
                 if confirm == "rm":
+                    self.writer.close()
+
                     shutil.rmtree(log_dir)
-                sys.exit()
+                    sys.exit()
+
             # PR curve makes sense only for 2 class classification problems
-            if self.data_type == "lab_mask":
+            if self.data_type in ["lab_mask", "ring_mask_only"]:
                 self.writer.add_pr_curve("recall curve", y_val, y_predicted)
 
             hparam_dict = {

@@ -24,6 +24,8 @@ class DataFormatter:
         self.balance = utils.load_config("TRAINING_CHOICE", "BALANCE")
         self.device = torch.device(utils.load_config("TRAINING_INFO", "DEVICE"))
         self.data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
+        self.model_type = utils.load_config("TRAINING_CHOICE", "MODEL_TYPE")
+        self.channels = utils.load_config("TRAINING_INFO", self.data_type.upper(), self.model_type.upper(), "CHANNELS")
         self.image_process = ProcessImage()
 
     def leaf_mask_data(self, leaf, return_mask=False):
@@ -41,7 +43,7 @@ class DataFormatter:
         Y_leaf_pixels : list
             The actual label for each pixel
         """
-        hsi_array = self.open_im.hsi_array(leaf)
+        hsi_array = self.open_im.hsi_array(leaf, channels=self.channels)
         if self.data_type == "lab_mask":
             lab_arr = self.open_im.lab_array(leaf)
             # Remove all pixel which have a too low max intensity. (< 0.01) (outside leaf)
@@ -56,6 +58,13 @@ class DataFormatter:
         if self.data_type == "ring_mask":
             lab_arr = self.open_im.ring_mask_array(leaf)
             mask_lab = lab_arr > 0.1
+        if self.data_type == "ring_mask_cont":
+            lab_arr = self.open_im.ring_mask_cont_array(leaf)
+            mask_lab = lab_arr > 0  # take only leaf and healthy or ring pixels        
+        if self.data_type == "ring_mask_only":
+            lab_arr = self.open_im.ring_mask_cont_array(leaf)
+            mask_lab = lab_arr > 0  # take only leaf and healthy or ring pixels      
+
 
         mask_hsi = hsi_array.max(axis=-1) > 0.01
         leaf_mask = mask_hsi & mask_lab
@@ -64,6 +73,9 @@ class DataFormatter:
             return lab_arr, leaf_mask
         x_leaf_pixels = hsi_array[leaf_mask]
         y_leaf_labels = lab_arr[leaf_mask]
+        if self.data_type == "ring_mask_only":
+            # from continuous to classification 
+            y_leaf_labels = (y_leaf_labels < np.max(lab_arr))
 
         return x_leaf_pixels, y_leaf_labels
 
@@ -109,12 +121,14 @@ class DataFormatter:
         return y_real, to_leaf_form
 
     def make_leaf_visible(self, y):
+        print("For image visibility, the value of the pixels are recalibrated.")
         category = list(np.unique(y).astype(int)) == [0, 1]
         if category:
             # put y_pred to 0, 200, 255 format like y_real
             y = np.where(y == 1, 200, 255)
         else:
             # 0 = out of leaf. Fill the whole possible range of values ([0,255])
+            print(f"Before recalibration, we had : min(y) = {np.min(y):.2f} and max(y) = {np.max(y):.2f}")
             min_value = 20
             y = y / np.max(y) * (255 - min_value) + min_value
         return y
@@ -163,7 +177,12 @@ class DataFormatter:
             y_tuple[:, 1] = y_set == 100  # ring
             y_tuple[:, 2] = y_set == 200  # sick
             y_set = y_tuple
-
+        if self.data_type == "ring_mask_cont":  # linearly fits the data to [0,1], 1 being closest to sick
+            pmin = np.min(y_set)
+            pmax = np.max(y_set)
+            a = 1 / (pmin - pmax)
+            b = pmax / (pmax - pmin)
+            y_set = a * y_set + b
         return x_set, y_set
 
     def load_data_verbose(self, n_samples, n_features, y_set):
@@ -180,6 +199,16 @@ class DataFormatter:
             n_healthy = len(y_set[y_set == 255])
             print(
                 f"Proportion of : sick pixels = {100 * n_sick /n_samples:.2f} %, ring_pixels = {100 * n_ring / n_samples:.2f} %, healthy pixels = {100 * n_healthy / n_samples:.2f} %"
+            )
+        if self.data_type == "ring_mask_cont":
+            n_healthy = len(y_set[y_set == 31 * 8])
+            print(
+                f"Proportion of :  healthy pixels = {100 * n_healthy / n_samples:.2f} %, ring_pixels = {100 * (n_samples - n_healthy) / n_samples:.2f} %,"
+            )
+        if self.data_type == "ring_mask_only":
+            n_healthy = len(y_set[y_set == 0])
+            print(
+                f"Proportion of :  healthy pixels = {100 * n_healthy / n_samples:.2f} %, ring_pixels = {100 * (n_samples - n_healthy) / n_samples:.2f} %,"
             )
 
     def balance_data(self, x, y):
@@ -214,9 +243,15 @@ class DataFormatter:
         scale=True,
         requires_grad: bool = False,
         normalise=utils.load_config("TRAINING_CHOICE", "NORMALISE"),
+        noise=None
     ) -> tuple:
         """Fits the data for Neural Network training. Optional parameters to specify data type and transformation."""
         # Add duplicates in the training set to have 50/50 distribution of sick/non sick pixels
+        if noise is None:
+            utils.load_config("TRAINING_INFO", self.data_type.upper(), self.model_type.upper(), "NOISE")
+        if noise:
+            x_set = x_set + noise * np.random.normal(loc=0.0, scale=1.0, size=x_set.shape)
+        
         if normalise:
             x_set = self.image_process.normalise_image_spectra(x_set)
         if self.balance:

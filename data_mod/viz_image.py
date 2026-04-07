@@ -42,12 +42,22 @@ class VizImage:
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
         self.data_process = ProcessImage()
 
-    def show_channel(self, leaf, channel_number, normalise=False, threshold=None):
+    def show_channel(
+        self, leaf, channel_number, normalise=False, threshold=None, noise=False
+    ):
         """Shows image for chosen channel"""
         hsi_arr = self.open_im.hsi_array(leaf)
         if normalise:  # apply normalise to all pixels
             hsi_arr = self.data_process.normalise_image_spectra(hsi_arr)
         im_channel = hsi_arr[:, :, channel_number]
+        if noise:
+            im_channel_noise = im_channel + noise * np.random.normal(
+                loc=0.0, scale=1.0, size=im_channel.shape
+            )
+            plt.imshow(im_channel_noise)
+            plt.title(f"Image of Channel {channel_number} of leaf {leaf} with noise factor = {noise}")
+            plt.colorbar()
+            plt.show()
         if threshold is not None:
             # 1 = sane, 2 = sick, 0 = out of leaf
             im_channel = np.where(
@@ -239,15 +249,17 @@ class VizImage:
 
 
 if __name__ == "__main__":
-    LEAF_NAME = "foliolo8_enves_a10"
+    LEAF_NAME = "foliolo2_enves_a9"
 
     im_viz = VizImage()
 
-    CHANNEL_NUMBER = 8
+    CHANNEL_NUMBER = 73
 
-    im_viz.spectrogram_interactive_mapping(CHANNEL_NUMBER, LEAF_NAME, normalise=True)
- 
-    im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER, normalise=True, threshold=1)
+    im_viz.show_channel(LEAF_NAME, 20, noise=0.02)
 
-    LEAF_NUMBER = 5
+    im_viz.spectrogram_interactive_mapping(CHANNEL_NUMBER, LEAF_NAME, normalise=False)
+    #
+    # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER, normalise=True, threshold=1)
+
+    LEAF_NUMBER = 4
     im_viz.show_leaf_evol(LEAF_NUMBER, channel=CHANNEL_NUMBER)

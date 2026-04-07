@@ -15,7 +15,7 @@ class OpenImage:
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
         self.number_of_channels = utils.load_config("DATA", "NUMBER_OF_CHANNELS")
 
-    def hsi_array(self, leaf):
+    def hsi_array(self, leaf, channels=None):
         """Returns hyperspectral image array
 
         :param str leaf: name of the leaf
@@ -24,13 +24,16 @@ class OpenImage:
         path = os.path.join(self.data_dir, "HSI", leaf_number, side, leaf + ".hdr")
         spec_lib = sp1.envi.open(path)
         hsi_arr = spec_lib.asarray()
-        n_tot_channels = utils.load_config("DATA", "TOTAL_N_CHANNELS")
-        if self.number_of_channels in list(range(1, n_tot_channels)):
-            # Slice to select only some channels
-            step = hsi_arr.shape[2] // self.number_of_channels
-            start = (hsi_arr.shape[2] % self.number_of_channels) // 2
-            end = -(hsi_arr.shape[2] % self.number_of_channels) // 2
-            hsi_arr = hsi_arr[:, :, start:end:step]
+        if channels is None:
+            n_tot_channels = utils.load_config("DATA", "TOTAL_N_CHANNELS")
+            if self.number_of_channels in list(range(1, n_tot_channels)):
+                # Slice to select only some channels
+                step = hsi_arr.shape[2] // self.number_of_channels
+                start = (hsi_arr.shape[2] % self.number_of_channels) // 2
+                end = -(hsi_arr.shape[2] % self.number_of_channels) // 2
+                hsi_arr = hsi_arr[:, :, start:end:step]
+        else:
+            hsi_arr = hsi_arr[:, :, channels]
         return hsi_arr
 
     def lab_array(self, leaf):
@@ -59,6 +62,15 @@ class OpenImage:
         )
         ring_img = Image.open(path)
         return np.array(ring_img)
+    
+    def ring_mask_cont_array(self, leaf):
+        """Returns ring mask continuous array"""
+        leaf_number, side = leaf.split("_")[0], leaf.split("_")[1]
+        path = os.path.join(
+            self.data_dir, "Ring_Mask", leaf_number, side, leaf + ".png"
+        )
+        ring_img = Image.open(path)
+        return np.array(ring_img)        
 
     def leaves(self, enves_only=True, leaf_numbers=None):
         """Returns a sorted list of all the leaf names in the db,
