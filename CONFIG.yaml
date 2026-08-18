@@ -11,12 +11,12 @@ DATA :
   VALIDATION_LEAVES : [2, 4, 8, 11]
   NUMBER_OF_LEAVES : 17
   # custom
-  NUMBER_OF_CHANNELS : 55
+  NUMBER_OF_CHANNELS : 20
   CONT_RING_LIM_DIST : 15
 
 
 TRAINING_CHOICE :
-  DATA_TYPE : "lab_mask"   # dist_mask, ring_mask, lab_mask, ring_mask_cont, ring_mask_only
+  DATA_TYPE : "ring_mask_only"   # dist_mask, ring_mask, lab_mask, ring_mask_cont, ring_mask_only
   MODEL_TYPE : "MLP"  # "MLP"  # or "TREE"
   BALANCE : False # proportion of sick pixels after transformation. no balance : False  # MAKES SENSE ONLY FOR CLASSIFICATION
   NORMALISE : False
@@ -85,5 +85,7 @@ TRAINING_INFO :
       FACTOR : 0.5
       PATIENCE : 20
       THRESHOLD : 0.001
-      LABEL_THRESHOLD : 0.3
+      LABEL_THRESHOLD : 0.2
       DELTA : 0.0001      
+      CHANNELS : null
+      NOISE : 0.001

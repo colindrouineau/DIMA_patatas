@@ -35,11 +35,11 @@ def perff(y_val, y_pred): print(info on model perf); return metric dictionary ("
 
 
 ## Models that have been developed so far :
-- MLP for "lab_mask" : detect if the pixel is sick or not (binary)
-- MLP for "dist_mask" : estimate the euclidian distance of a pixel from the sick zone
-- MLP for "ring_mask" (the data is no longer available) : 3 class classification (sick, ring, healthy)
-- MLP for "ring_mask_cont" : estimate the distance of the sick zone for ring pixels. Does not train on sick pixel data (they put away from the train dataset)
-- MLP for "ring_mask_only" : 2 class classification (ring, healthy). Does not train on sick pixels.
+- MLP for "**lab_mask**" : detect if the pixel is sick or not (binary)
+- MLP for "**dist_mask**" : estimate the euclidian distance of a pixel from the sick zone
+- MLP for "**ring_mask**" (the data is no longer available) : 3 class classification (sick, ring, healthy)
+- MLP for "**ring_mask_cont**" : estimate the distance of the sick zone for ring pixels. Does not train on sick pixel data (they put away from the train dataset)
+- MLP for "**ring_mask_only**" : 2 class classification (ring, healthy). Does not train on sick pixels.
 
 ## Tune a model
 - change the model in **nn_models.py**

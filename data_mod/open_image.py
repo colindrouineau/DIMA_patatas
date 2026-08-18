@@ -111,6 +111,9 @@ if __name__ == "__main__":
     hsi_ex = open_im.hsi_array(LEAF_NAME)
     print(f"HSI image has dimensions : {hsi_ex.shape}")
 
-    ring_ex = open_im.mask_dist_array(LEAF_NAME)
+    ring_ex = open_im.ring_mask_cont_array(LEAF_NAME)
+    import matplotlib.pyplot as plt
+    plt.imshow(ring_ex)
+    plt.show()
     print(ring_ex)
     print(np.unique(ring_ex), ring_ex.shape)

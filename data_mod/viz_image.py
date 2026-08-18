@@ -55,7 +55,9 @@ class VizImage:
                 loc=0.0, scale=1.0, size=im_channel.shape
             )
             plt.imshow(im_channel_noise)
-            plt.title(f"Image of Channel {channel_number} of leaf {leaf} with noise factor = {noise}")
+            plt.title(
+                f"Image of Channel {channel_number} of leaf {leaf} with noise factor = {noise}"
+            )
             plt.colorbar()
             plt.show()
         if threshold is not None:
@@ -255,11 +257,11 @@ if __name__ == "__main__":
 
     CHANNEL_NUMBER = 73
 
-    im_viz.show_channel(LEAF_NAME, 20, noise=0.02)
-
-    im_viz.spectrogram_interactive_mapping(CHANNEL_NUMBER, LEAF_NAME, normalise=False)
+    # im_viz.show_channel(LEAF_NAME, 20, noise=0.02)
+    #
+    # im_viz.spectrogram_interactive_mapping(CHANNEL_NUMBER, LEAF_NAME, normalise=False)
     #
     # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER, normalise=True, threshold=1)
 
-    LEAF_NUMBER = 4
+    LEAF_NUMBER = 11
     im_viz.show_leaf_evol(LEAF_NUMBER, channel=CHANNEL_NUMBER)

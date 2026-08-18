@@ -136,7 +136,7 @@ class TrainNN:
         self.early_stopping = train_utils.EarlyStopping(patience=100, delta=self.delta)
 
     def define_mlp_ringonly_functions(self):
-        training_info = utils.load_config("TRAINING_INFO", "LAB_MASK", "MLP")
+        training_info = utils.load_config("TRAINING_INFO", "RING_MASK_ONLY", "MLP")
         self.model = RingPixOnlyNN().to(self.device)
         # self.criterion = nn.BCELoss()
         self.criterion = train_utils.FocalLoss(alpha=1, gamma=2)

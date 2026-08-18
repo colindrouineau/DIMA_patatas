@@ -29,6 +29,7 @@ class ModelTester:
         self.data_formatter = DataFormatter()
         self.data_formatter.balance = False  # Balance is only useful for training
         self.val_leaves = utils.load_config("DATA", "VALIDATION_LEAVES")
+        self.test_leaves = utils.load_config("DATA", "TEST_LEAVES")
         self.visualise = VizImage()
         self.data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
         self.model_type = utils.load_config("TRAINING_CHOICE", "MODEL_TYPE")
@@ -43,15 +44,17 @@ class ModelTester:
             "LABEL_THRESHOLD",
         )
 
-    def performance_on_whole_val_set(self):
+    def performance_on_whole_dataset(self, real_test=False, thresh_search=False):
         """Prints performance of model on the whole validation dataset"""
         with torch.no_grad():
             # writer.add_image('mnist_images', img_grid) (to add an image
-            x_set, y_set = self.data_formatter.load_data(leaf_numbers=self.val_leaves)
+            leaves = self.test_leaves if real_test else self.val_leaves
+            x_set, y_set = self.data_formatter.load_data(leaf_numbers=leaves)
             X_val, y_val = self.data_formatter.scale_and_format_data(x_set, y_set)
             print(f"Performance of model {self.model_name} on validation dataset:")
             y_pred, y_val = self.load_nn_and_perf(X_val, y_val)
-            self.threshold, _ = self.find_best_threshold(y_val, y_pred, show=True)
+            if thresh_search:
+                self.threshold, _ = self.find_best_threshold(y_val, y_pred, show=True)
 
     def find_best_threshold(self, y_val, y_pred, show=True):
         if len(np.unique(y_val)) > 2:
@@ -263,12 +266,12 @@ class ModelTester:
 
 
 if __name__ == "__main__":
-    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/lab_mask/07-04--16:27_MLP.pth"
-    
-    model_tester = ModelTester(model_path=MODEL_PATH_MLP, round_labels=False)
+    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/ring_mask_only/20-04--09:01_MLP.pth"
+
+    model_tester = ModelTester(model_path=MODEL_PATH_MLP, round_labels=True)
 
     LEAF = "foliolo4_enves_a12"
 
-    model_tester.performance_on_whole_val_set()
+    model_tester.performance_on_whole_dataset(real_test=True)
     model_tester.analyse_one_leaf(LEAF)
-    # model_tester.compare_class_spectra()
+    model_tester.compare_class_spectra()
