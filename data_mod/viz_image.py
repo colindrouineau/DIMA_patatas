@@ -149,6 +149,50 @@ class VizImage:
         slider.on_changed(update)
         plt.show()
 
+    def animation_leaf_evol(self, leaf_number: int, side="enves", channel: int = 70):
+        """Show and save animation of the temporal evolution of a given leaf
+
+        :param tuple red_pixel: if not None, position of a pixel that will be in a different colour for all the animation
+        :param int channel: shows lab image evolution.
+        Else, it must be the channel number and this function shows the HSI evolution for this channel.
+        """
+        hsi_path = os.path.join(self.data_dir, "HSI", f"foliolo{leaf_number}", side)
+        paths = utils.sort_images(glob.glob(f"{hsi_path}/*.hdr"))
+        hsi_images = [
+            np.array(sp1.envi.open(file).asarray())[:, :, channel] for file in paths
+        ]
+
+        lab_mask_path = os.path.join(
+            self.data_dir, "Lab_Feb2025_Mask", f"foliolo{leaf_number}", side
+        )
+        paths = utils.sort_images(glob.glob(f"{lab_mask_path}/*.png"))
+        lab_images = [np.array(Image.open(file)) for file in paths]
+
+        from matplotlib.animation import FuncAnimation, PillowWriter
+        # Créer une figure
+        fig, ax = plt.subplots()
+        ax.axis('off')  # Désactiver les axes
+        
+        # Fonction pour mettre à jour l'image
+        def update(frame):
+            ax.clear()
+            ax.axis('off')
+            ax.imshow(lab_images[frame])
+            return ax,
+        
+        # Créer l'animation
+        anim = FuncAnimation(
+            fig,
+            update,
+            frames=len(lab_images),
+            interval=100,  # Délai entre les frames en ms
+            blit=False
+        )
+
+        anim.save('video.gif', writer=PillowWriter(fps=1))
+
+        plt.close()
+
     def plot_y_real_pred(self, y_real, y_pred, title=None):
         """shows side by side predicted and real label."""
         plt.subplot(1, 2, 1)
@@ -265,3 +309,4 @@ if __name__ == "__main__":
 
     LEAF_NUMBER = 11
     im_viz.show_leaf_evol(LEAF_NUMBER, channel=CHANNEL_NUMBER)
+    im_viz.animation_leaf_evol(LEAF_NUMBER, channel=CHANNEL_NUMBER)
