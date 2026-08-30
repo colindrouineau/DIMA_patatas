@@ -19,6 +19,7 @@ class OpenImage:
         """Returns hyperspectral image array
 
         :param str leaf: name of the leaf
+        :param list channels: 
         """
         leaf_number, side = leaf.split("_")[0], leaf.split("_")[1]
         path = os.path.join(self.data_dir, "HSI", leaf_number, side, leaf + ".hdr")

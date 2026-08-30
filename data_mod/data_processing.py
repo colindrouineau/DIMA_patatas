@@ -129,9 +129,10 @@ class ProcessImage:
 
     def normalise_signal(self, X: np.ndarray) -> np.ndarray:
         """smooths and applies SNV to the X signal
-        
-        UPDATE : savgol filter is no longer used because of its computation time and because it is not deemed necessary"""
-        #smoothed = savgol_filter(X, window_length=7, polyorder=3)
+
+        UPDATE : savgol filter is no longer used because of its computation time and because it is not deemed necessary
+        """
+        # smoothed = savgol_filter(X, window_length=7, polyorder=3)
         smoothed = X
         std = np.std(smoothed)
         if std == 0:
@@ -169,7 +170,7 @@ class ProcessImage:
 
         Returns:
             distance_map: 2D array where each element is the distance to the closest point of the other class.
-                          -1 values remain unchanged. 
+                          -1 values remain unchanged.
                           WARNING : dtype = float
         """
         arr = np.where(lab_mask == 0, -1, np.where(lab_mask == 200, 1, 0))
@@ -209,10 +210,14 @@ class ProcessImage:
         distance_to_1 = np.zeros_like(lab_mask, dtype=float)
         distance_to_1 = distance_transform_edt(~mask_sick)
         # color to 100 the points that are close enough to 1 (and in the leaf)
-        lab_mask[(lab_mask > 0) & (distance_to_1 <= self.cont_ring_dist) & (distance_to_1 > 0)] = 100
+        lab_mask[
+            (lab_mask > 0)
+            & (distance_to_1 <= self.cont_ring_dist)
+            & (distance_to_1 > 0)
+        ] = 100
 
         return lab_mask
-    
+
     def create_cont_ring_array(self, lab_mask):
         """
         :param np.ndarray lab_mask: Array filled with 0 (outside leaf), 200 (sick pixel), 255 (healthy pixel)
@@ -225,9 +230,13 @@ class ProcessImage:
         relative_distance = self.relative_distance_mask(lab_mask)
         class_ring_array = self.create_class_ring_array(lab_mask)
         multiplier = 255 // (self.cont_ring_dist + 1)
-        relative_distance[class_ring_array == 255] = (self.cont_ring_dist + 1) * multiplier
+        relative_distance[class_ring_array == 255] = (
+            self.cont_ring_dist + 1
+        ) * multiplier
         relative_distance[class_ring_array == 100] *= multiplier
-        relative_distance[(class_ring_array == 200) | (class_ring_array == 0)] = 0  # sick pixels considered as outside leaf
+        relative_distance[(class_ring_array == 200) | (class_ring_array == 0)] = (
+            0  # sick pixels considered as outside leaf
+        )
         relative_distance = np.round(relative_distance)
         relative_distance = np.vectorize(np.uint8)(relative_distance)
         return relative_distance
@@ -253,6 +262,51 @@ class ProcessImage:
                     save_path = os.path.join(save_folder, image)
                     Image.fromarray(cont_ring_mask).save(save_path)
                     print(f"Saved ring new mask image at {save_path}")
+
+    def create_temporal_mask(self):
+        """Creates a new folder with the newly created temporal mask leaves
+
+        The mask is such that the pixel value is 1 if the pixel is sick in the next image and wasn't sick in the current image, 0 otherwise.
+        The last image of the sequence won't be labeled.
+        """
+
+        path_to_folder_lab = os.path.join(
+            utils.load_config("PATH", "DATA_DIR"), "Lab_Feb2025_Mask"
+        )
+        path_to_new_folder = os.path.join(
+            utils.load_config("PATH", "DATA_DIR"), "Temporal_Mask"
+        )
+        leaves = utils.sort_leaves(os.listdir(path_to_folder_lab))
+        for leaf in leaves:
+            for side in ["haz", "enves"]:
+                leaf_path = os.path.join(path_to_folder_lab, leaf, side)
+
+                # load masks
+                leaf_sequence = []
+                image_paths = utils.sort_images(os.listdir(leaf_path))
+                for image in image_paths:
+                    leaf_name = image.split(".")[0]
+                    lab_mask = open_image.lab_array(leaf_name)
+                    leaf_sequence.append(lab_mask)
+
+                # compute temporal masks
+                temporal_mask_sequence = []
+                for i in range(len(leaf_sequence) - 1):
+                    new_sick = leaf_sequence[i] - leaf_sequence[i + 1]
+                    new_sick = np.where(new_sick == 55, np.uint8(255), np.uint8(0))
+                    temporal_mask_sequence.append(new_sick)
+                
+
+                # save temporal masks
+                for i, image in enumerate(image_paths):
+                    if i == len(temporal_mask_sequence):
+                        break
+                    leaf_name = image.split(".")[0]
+                    save_folder = os.path.join(path_to_new_folder, leaf, side)
+                    os.makedirs(save_folder, exist_ok=True)
+                    save_path = os.path.join(save_folder, image)
+                    Image.fromarray(temporal_mask_sequence[i]).save(save_path)
+                    print(f"Saved temporal new mask image at {save_path}")
 
 
 if __name__ == "__main__":
@@ -292,4 +346,5 @@ if __name__ == "__main__":
     # test_normalise_signal()
     # test_normalise_signal()
     # test_create_ring_array()
-    img_cleaner.create_cont_ring_image_set()
+    # img_cleaner.create_cont_ring_image_set()
+    img_cleaner.create_temporal_mask()

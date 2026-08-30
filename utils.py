@@ -49,6 +49,11 @@ def sort_images(path_list):
 
     return sorted(path_list, key=key_sort_func)
 
+def sort_leaves(leaves_list):
+    def key_sort_func(leaf):
+        number = int(leaf[7:])
+        return number
+    return sorted(leaves_list, key=key_sort_func)
 
 def leaf_training_list():
     """Returns numbers of training leaves (those which are not test nor validation)"""
