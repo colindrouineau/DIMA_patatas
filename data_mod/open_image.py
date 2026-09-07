@@ -13,27 +13,18 @@ class OpenImage:
 
     def __init__(self):
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
-        self.number_of_channels = utils.load_config("DATA", "NUMBER_OF_CHANNELS")
 
     def hsi_array(self, leaf, channels=None):
         """Returns hyperspectral image array
 
         :param str leaf: name of the leaf
-        :param list channels: 
+        :param list channels:
         """
         leaf_number, side = leaf.split("_")[0], leaf.split("_")[1]
         path = os.path.join(self.data_dir, "HSI", leaf_number, side, leaf + ".hdr")
         spec_lib = sp1.envi.open(path)
         hsi_arr = spec_lib.asarray()
-        if channels is None:
-            n_tot_channels = utils.load_config("DATA", "TOTAL_N_CHANNELS")
-            if self.number_of_channels in list(range(1, n_tot_channels)):
-                # Slice to select only some channels
-                step = hsi_arr.shape[2] // self.number_of_channels
-                start = (hsi_arr.shape[2] % self.number_of_channels) // 2
-                end = -(hsi_arr.shape[2] % self.number_of_channels) // 2
-                hsi_arr = hsi_arr[:, :, start:end:step]
-        else:
+        if channels is not None:
             hsi_arr = hsi_arr[:, :, channels]
         return hsi_arr
 
@@ -50,28 +41,19 @@ class OpenImage:
         """Returns distance to sick pixel image array"""
         leaf_number, side = leaf.split("_")[0], leaf.split("_")[1]
         path = os.path.join(
-            self.data_dir, "Mask_Distance", leaf_number, side, leaf + "_dist.png"
+            self.data_dir, "Mask_RelDist", leaf_number, side, leaf + ".png"
         )
         dist_img = Image.open(path)
         return np.array(dist_img)
-    
-    def ring_mask_array(self, leaf):
-        """Returns ring mask array"""
+
+    def temp_array(self, leaf):
+        """Returns temporal distance to sick pixel image array"""
         leaf_number, side = leaf.split("_")[0], leaf.split("_")[1]
         path = os.path.join(
-            self.data_dir, "Ring_Mask_Class", leaf_number, side, leaf + ".png"
+            self.data_dir, "Temporal_Mask", leaf_number, side, leaf + ".png"
         )
-        ring_img = Image.open(path)
-        return np.array(ring_img)
-    
-    def ring_mask_cont_array(self, leaf):
-        """Returns ring mask continuous array"""
-        leaf_number, side = leaf.split("_")[0], leaf.split("_")[1]
-        path = os.path.join(
-            self.data_dir, "Ring_Mask", leaf_number, side, leaf + ".png"
-        )
-        ring_img = Image.open(path)
-        return np.array(ring_img)        
+        dist_img = Image.open(path)
+        return np.array(dist_img)
 
     def leaves(self, enves_only=True, leaf_numbers=None):
         """Returns a sorted list of all the leaf names in the db,
@@ -79,22 +61,30 @@ class OpenImage:
 
         :param list | None leaf_number: if is None, returns all leaves, else the ones in the list
         """
+        data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
+        folder = {
+            "temp_mask": "Temporal_Mask",
+            "dist_mask": "Mask_RelDist",
+            "lab_mask": "Temporal_Mask",
+        }[
+            data_type
+        ]  # temporal mask even for lab because it's how it's sampled.
         leaf_names = []
-        hsi_path = os.path.join(self.data_dir, "HSI")
+        folder_path = os.path.join(self.data_dir, folder)
         leaves = (
-            os.listdir(hsi_path)
+            os.listdir(folder_path)
             if leaf_numbers is None
             else [f"foliolo{leaf_number}" for leaf_number in leaf_numbers]
         )
         for leaf in leaves:
-            time_series = os.listdir(os.path.join(hsi_path, leaf, "enves"))
+            time_series = os.listdir(os.path.join(folder_path, leaf, "enves"))
             # remove extension and duplicates
             time_series = list(
                 set([time_leaf.split(".")[0] for time_leaf in time_series])
             )
             leaf_names += time_series
             if not enves_only:
-                time_series = os.listdir(os.path.join(hsi_path, leaf, "haz"))
+                time_series = os.listdir(os.path.join(folder_path, leaf, "haz"))
                 time_series = list(
                     set([time_leaf.split(".")[0] for time_leaf in time_series])
                 )
@@ -114,6 +104,7 @@ if __name__ == "__main__":
 
     ring_ex = open_im.ring_mask_cont_array(LEAF_NAME)
     import matplotlib.pyplot as plt
+
     plt.imshow(ring_ex)
     plt.show()
     print(ring_ex)

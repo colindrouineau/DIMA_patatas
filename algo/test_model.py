@@ -11,7 +11,7 @@ from data_mod.format_data import DataFormatter
 from data_mod.viz_image import VizImage
 from data_mod.data_analysis import DataAnalyse
 from algo.nn_models import (
-    BinPixNN,
+    CommonNN,
     DistPixNN,
     RingPix3ClassNN,
     RingContPixNN,
@@ -191,7 +191,7 @@ class ModelTester:
             loaded_model = jit.load(model_path).to(self.device)
         else:
             if self.data_type == "lab_mask":
-                loaded_model = BinPixNN().to(self.device)
+                loaded_model = CommonNN().to(self.device)
             if self.data_type == "dist_mask":
                 loaded_model = DistPixNN().to(self.device)
             if self.data_type == "ring_mask":

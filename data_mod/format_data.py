@@ -20,20 +20,22 @@ class DataFormatter:
         initiates attributes using CONFIG information
         """
         self.open_im = OpenImage()
-        self.number_of_channels = utils.load_config("DATA", "NUMBER_OF_CHANNELS")
-        self.balance = utils.load_config("TRAINING_CHOICE", "BALANCE")
         self.device = torch.device(utils.load_config("TRAINING_INFO", "DEVICE"))
         self.data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
         self.model_type = utils.load_config("TRAINING_CHOICE", "MODEL_TYPE")
-        self.channels = utils.load_config("TRAINING_INFO", self.data_type.upper(), self.model_type.upper(), "CHANNELS")
+        self.channels = utils.load_config("TRAINING_CHOICE", "CHANNELS")
+        if self.channels == 'all':
+            self.channels = list(range(111))
         self.image_process = ProcessImage()
 
     def leaf_mask_data(self, leaf, return_mask=False):
         """Filters pixels on the leaf and format data to a list.
         Takes pixel which are on both HSI leaf and lab_img leaf.
+        Selects and labels pixels accordingly to the data type
 
         :param str leaf: name of the leaf
         :param bool return_mask: if True, returns (label_array, leaf_mask)
+        :param bool temporal: if True, uses temporal label for selection
 
 
         Returns
@@ -44,38 +46,43 @@ class DataFormatter:
             The actual label for each pixel
         """
         hsi_array = self.open_im.hsi_array(leaf, channels=self.channels)
-        if self.data_type == "lab_mask":
-            lab_arr = self.open_im.lab_array(leaf)
-            # Remove all pixel which have a too low max intensity. (< 0.01) (outside leaf)
-            mask_lab = lab_arr > 0.01
-            # label = 1 if the pixel is sick, 0 otherwise
-            lab_arr = np.where(lab_arr == 200, 1, 0)
+        lab_arr = self.open_im.lab_array(leaf)
+
         if self.data_type == "dist_mask":
-            lab_arr = self.open_im.mask_dist_array(leaf)
-            mask_lab = (
-                lab_arr > -1
-            )  # We take all, assuming hsi filter is enough, since the sick pixels have the same value than pixels outside the leaf
-        if self.data_type == "ring_mask":
-            lab_arr = self.open_im.ring_mask_array(leaf)
-            mask_lab = lab_arr > 0.1
-        if self.data_type == "ring_mask_cont":
-            lab_arr = self.open_im.ring_mask_cont_array(leaf)
-            mask_lab = lab_arr > 0  # take only leaf and healthy or ring pixels        
-        if self.data_type == "ring_mask_only":
-            lab_arr = self.open_im.ring_mask_cont_array(leaf)
-            mask_lab = lab_arr > 0  # take only leaf and healthy or ring pixels      
+            dist_arr = self.open_im.mask_dist_array(leaf)
+            # pixels which are too sick :
+            too_sick = dist_arr > 128 + 5
+            # pixels which are in the ring :
+            in_the_ring = dist_arr < 10
+        else:
+            temp_arr = self.open_im.temp_array(leaf)
+            # pixels which are too sick :
+            too_sick = temp_arr < 128 - 3
+            # pixels which are in the ring :
+            in_the_ring = temp_arr == 128
 
+        # pixels which are in the leaf :
+        in_the_leaf = lab_arr > 0.01  # for labels
+        mask_hsi = hsi_array.max(axis=-1) > 0.01  # for data
+        is_sick = lab_arr == 200
 
-        mask_hsi = hsi_array.max(axis=-1) > 0.01
-        leaf_mask = mask_hsi & mask_lab
+        if self.data_type == "lab_mask":
+            # Select pixels in the leaf, not too sick, and not in the ring
+            mask = (in_the_leaf & ~too_sick) & ~in_the_ring
+            # label = 1 if the pixel is sick, 0 otherwise
+            label_arr = np.where(lab_arr == 200, 1, 0)
+        if self.data_type in ["dist_mask", "temp_mask"]:
+            # Select pixels in the leaf, not sick
+            mask = in_the_leaf & ~is_sick
+            label_arr = lab_arr
+            label_arr[in_the_ring] = 1
+            label_arr[~in_the_ring] = 0
 
+        leaf_mask = mask_hsi & mask
         if return_mask:
-            return lab_arr, leaf_mask
+            return label_arr, leaf_mask
         x_leaf_pixels = hsi_array[leaf_mask]
-        y_leaf_labels = lab_arr[leaf_mask]
-        if self.data_type == "ring_mask_only":
-            # from continuous to classification 
-            y_leaf_labels = (y_leaf_labels < np.max(lab_arr))
+        y_leaf_labels = label_arr[leaf_mask]
 
         return x_leaf_pixels, y_leaf_labels
 
@@ -120,20 +127,28 @@ class DataFormatter:
 
         return y_real, to_leaf_form
 
-    def make_leaf_visible(self, y):
+    def make_leaf_visible(self, y, minimum=None):
         print("For image visibility, the value of the pixels are recalibrated.")
         category = list(np.unique(y).astype(int)) == [0, 1]
         if category:
             # put y_pred to 0, 200, 255 format like y_real
             y = np.where(y == 1, 200, 255)
+        if type(y) == list:
+            min1, min2 = np.sort(np.unique(y[0]))[0:2]
+            minimum = min2 if min1 == 0 else min1
+            return [self.make_leaf_visible(arr, minimum=minimum) for arr in y]
         else:
             # 0 = out of leaf. Fill the whole possible range of values ([0,255])
-            print(f"Before recalibration, we had : min(y) = {np.min(y):.2f} and max(y) = {np.max(y):.2f}")
-            min_value = 20
-            y = y / np.max(y) * (255 - min_value) + min_value
+            print(
+                f"Before recalibration, we had : min(y) = {np.min(y):.2f} and max(y) = {np.max(y):.2f}"
+            )
+            if minimum is None:
+                min1, min2 = np.sort(np.unique(y))[0:2]
+                minimum = min2 if min1 == 0 else min1
+            y = np.where(y == 0, 0, 255 / (np.max(y) - minimum) * (y - minimum))
         return y
 
-    def load_data(self, channels=None, leaf_numbers=None):
+    def load_data(self, leaf_numbers=None, balance_data=True):
         """Load data.
         Set number of samples and number of features as attributes.
 
@@ -152,88 +167,48 @@ class DataFormatter:
         verbose = len(leaves) > 50
         if verbose:
             leaves = tqdm(leaves, desc="loading data", unit="leaf")
-        if channels is None:
-            x_set = np.empty((0, self.number_of_channels))
-        else:
-            x_set = np.empty((0, len(channels)))
+
+        x_set = np.empty((0, len(self.channels)))
         y_set = []
 
         for leaf in leaves:
             x, y = self.leaf_mask_data(leaf)
-            if channels is not None:
-                x = x[:, channels]
+            x = x[:, self.channels]
             x_set = np.concat((x_set, x))
             y_set = np.concat((y_set, y))
 
         n_samples, n_features = x_set.shape
         if verbose:
-            self.load_data_verbose(n_samples, n_features, y_set)
+            print(
+                f"There are {n_samples} pixels in the loaded dataset with each {n_features} channels"
+            )
+            print(
+                f"The proportion of bad (sick or soon sick) pixels is {100 * np.mean(y_set):.2f} %"
+            )
         # shuffle data
         x_set, y_set = shuffle(x_set, y_set)
-        if self.data_type == "ring_mask":
-            # Creates 3 categories fit for entropy loss function.
-            y_tuple = np.zeros((y_set.shape[0], 3), dtype=np.uint8)
-            y_tuple[:, 0] = y_set == 255  # healthy
-            y_tuple[:, 1] = y_set == 100  # ring
-            y_tuple[:, 2] = y_set == 200  # sick
-            y_set = y_tuple
-        if self.data_type == "ring_mask_cont":  # linearly fits the data to [0,1], 1 being closest to sick
-            pmin = np.min(y_set)
-            pmax = np.max(y_set)
-            a = 1 / (pmin - pmax)
-            b = pmax / (pmax - pmin)
-            y_set = a * y_set + b
+        if balance_data:
+            y0 = y_set[y_set == 0]
+            X0 = x_set[y_set == 0]
+            y1 = y_set[y_set == 1]
+            X1 = x_set[y_set == 1]
+            n0 = len(y0) 
+            n1 = len(y1) 
+            if n0 > n1:
+                rd_0elements = np.random.choice(y0.shape[0], size=n1, replace=False)
+                selected_y0 = y0[rd_0elements]
+                selected_X0 = X0[rd_0elements, :]
+                y_set = np.concatenate((selected_y0, y1))
+                x_set = np.concatenate((selected_X0, X1))
+            if n1 > n0:
+                rd_1elements = np.random.choice(y1.shape[0], size=n0, replace=False)
+                selected_y1 = y1[rd_1elements,]
+                selected_X1 = y1[rd_1elements, :]
+                y_set = np.concatenate((selected_y1, y0))
+                x_set = np.concatenate((selected_X1, X0))
+        # shuffle data
+        x_set, y_set = shuffle(x_set, y_set)
         return x_set, y_set
-
-    def load_data_verbose(self, n_samples, n_features, y_set):
-        print(
-            f"There are {n_samples} pixels in the loaded dataset with each {n_features} channels"
-        )
-        if self.data_type == "lab_mask":
-            print(f"The proportion of bad pixels is {100 * np.mean(y_set):.2f} %")
-        if self.data_type == "dist_mask":
-            print(f"The mean distance to a sick pixel is {np.mean(y_set):.2f}")
-        if self.data_type == "ring_mask":
-            n_ring = len(y_set[y_set == 100])
-            n_sick = len(y_set[y_set == 200])
-            n_healthy = len(y_set[y_set == 255])
-            print(
-                f"Proportion of : sick pixels = {100 * n_sick /n_samples:.2f} %, ring_pixels = {100 * n_ring / n_samples:.2f} %, healthy pixels = {100 * n_healthy / n_samples:.2f} %"
-            )
-        if self.data_type == "ring_mask_cont":
-            n_healthy = len(y_set[y_set == 31 * 8])
-            print(
-                f"Proportion of :  healthy pixels = {100 * n_healthy / n_samples:.2f} %, ring_pixels = {100 * (n_samples - n_healthy) / n_samples:.2f} %,"
-            )
-        if self.data_type == "ring_mask_only":
-            n_healthy = len(y_set[y_set == 0])
-            print(
-                f"Proportion of :  healthy pixels = {100 * n_healthy / n_samples:.2f} %, ring_pixels = {100 * (n_samples - n_healthy) / n_samples:.2f} %,"
-            )
-
-    def balance_data(self, x, y):
-        """Add randomly duplicates in the (training) set to have 50/50 distribution of sick/non sick pixels.
-        Then shuffle."""
-        pos_n = int(np.sum(y))
-        n = y.shape[0]
-        # How many sick pixels we should add to have a proportion of self.balance of sick pixel in the train dataset
-        gap = int((self.balance * n - pos_n) / (1 - self.balance))
-        if gap <= 0:
-            print(
-                f"There are already enough sick pixels for a balanced data set (balance={self.balance})"
-            )
-            return x, y
-
-        positive_profiles = x[y == 1]
-        added_positive_idx = np.random.choice(range(pos_n), size=gap, replace=True)
-        added_positive = np.copy(positive_profiles[added_positive_idx])
-
-        x = np.concat((x, added_positive))
-        y = np.concat((y, np.ones(gap)))
-        # Finally, shuffle
-        suffle_idx = np.random.choice(range(x.shape[0]), size=x.shape[0], replace=False)
-
-        return x[suffle_idx], y[suffle_idx]
 
     def scale_and_format_data(
         self,
@@ -242,20 +217,9 @@ class DataFormatter:
         to_tensor=True,
         scale=True,
         requires_grad: bool = False,
-        normalise=utils.load_config("TRAINING_CHOICE", "NORMALISE"),
-        noise=None
     ) -> tuple:
         """Fits the data for Neural Network training. Optional parameters to specify data type and transformation."""
         # Add duplicates in the training set to have 50/50 distribution of sick/non sick pixels
-        if noise is None:
-            utils.load_config("TRAINING_INFO", self.data_type.upper(), self.model_type.upper(), "NOISE")
-        if noise:
-            x_set = x_set + noise * np.random.normal(loc=0.0, scale=1.0, size=x_set.shape)
-        
-        if normalise:
-            x_set = self.image_process.normalise_image_spectra(x_set)
-        if self.balance:
-            x_set, y_set = self.balance_data(x_set, y_set)
         if scale:
             sc = StandardScaler()
             x_set = sc.fit_transform(x_set)

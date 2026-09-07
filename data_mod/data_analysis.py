@@ -3,61 +3,23 @@ import matplotlib.pyplot as plt
 
 from data_mod.format_data import DataFormatter
 from data_mod.data_processing import ProcessImage
-import utils
 from data_mod.viz_image import COLORS
 
 
 class DataAnalyse:
-    """class to compute images' interesting properties"""
+    """class to compute spectras' interesting properties"""
 
     def __init__(self):
         self.format_data = DataFormatter()
-        self.format_data.channels = None  # Don't select channels of the currently selecte
         self.data_process = ProcessImage()
 
-    def find_significant_channels(self, n_channels, normalise=True, ring=False):
-        """Channels where the difference between sick pixel and healthy pixel is the higher"""
-        if ring:  # then set sick pixels as ring pixels
-            # Force right parameters for loading :
-            self.format_data.data_type = "ring_mask_cont"
-            # load all data except test
-            x_set, y_set = self.format_data.load_data(leaf_numbers=utils.leaf_no_test())
-            if normalise:
-                x_set = self.data_process.normalise_image_spectra(x_set)
-            sick_pixels = x_set[y_set > 0]  # ring_pixels
-            healthy_pixels = x_set[y_set == 0]
-        else:
-            # Force right parameters for loading :
-            self.format_data.data_type = "lab_mask"
-            # load all data except test
-            x_set, y_set = self.format_data.load_data(leaf_numbers=utils.leaf_no_test())
-            if normalise:
-                x_set = self.data_process.normalise_image_spectra(x_set)
-            sick_pixels = x_set[y_set == 1]  # ring_pixels
-            healthy_pixels = x_set[y_set == 0]
-        # normalise data
-
-        sick_mean = np.mean(sick_pixels, axis=0)
-        healthy_mean = np.mean(healthy_pixels, axis=0)
-
-        difference = np.abs(sick_mean - healthy_mean)
-        channel_order = np.argsort(difference)
-        important_channels = channel_order[-n_channels:]
-        important_difference = difference[important_channels]
-        important_difference = [float(round(idif, 4)) for idif in important_difference]
-        print("The important channels are : ", important_channels[::-1])
-        print(
-            "The corresponding |healthy_mean - sick_mean| : ",
-            important_difference[::-1],
-        )
-        print("For copy paste, ordered list of channels")
-
-        self.plot_spectra(
-            [sick_pixels, healthy_pixels], ["sick_pixels", "healthy_pixels"]
-        )
-        self.plot_abs_difference(difference, ["sick_pixels", "healthy_pixels"])
-
-        return important_channels[::-1], important_difference[::-1]
+    def plot_abs_difference(self, x_0, x_1):
+        mean_0 = np.mean(x_0, axis=0)
+        mean_1 = np.mean(x_1, axis=0)
+        difference = np.abs(mean_0 - mean_1)
+        plt.plot(np.arange(0, len(difference)), difference)
+        plt.title("Absolute difference between the tow classes")
+        plt.show()
 
     def plot_spectra(self, class_list, label_list):
         """plots on the same figure the average and envelope spectra for
@@ -65,8 +27,10 @@ class DataAnalyse:
         - False positive
         - True positive
         - True negative
+
+        But can also be used for other classes. (eg sick / healthy)
         """
-        channels = list(range(self.format_data.number_of_channels))
+        channels = self.format_data.channels
         title = ""
         total_pixels = np.sum([len(pixel_class) for pixel_class in class_list])
 
@@ -95,45 +59,17 @@ class DataAnalyse:
         plt.legend()
         plt.show()
 
-    def plot_abs_difference(self, difference, label_list):
-        channels = list(range(self.format_data.number_of_channels))
-        title = f"Absolute difference between {label_list[0]} and {label_list[1]}"
-        plt.plot(channels, difference)
-        plt.title(title)
-        plt.show()
-
-    def vector_important_features(self, X: np.ndarray[(111,), float]) -> tuple[float]:
-        """return important features of a full spectrogram X
-
-        Returns
-        -------
-        - min in channels 20-40
-        - max in channels 40-60
-        - mean in channels 60-80"""
-        assert (
-            len(X) > 40
-        ), f"Array X has a length = {len(X)}, which is not enough to extract features."
-        maxi1 = np.max(X[0:20])
-        mini = np.min(X[20:40])
-        maxi2 = np.max(X[40:60])
-        return maxi1 - mini, maxi2 - mini
-
-    def dataset_important(self, data: np.ndarray) -> np.ndarray:
-        """Return important features for all the vectors in the data"""
-        feature = np.apply_along_axis(
-            self.vector_important_features,
-            axis=1,
-            arr=data,
-        )
-        return feature
+    def open_and_plot(self):
+        X, y = self.format_data.load_data()
+        X0 = X[y == 0]
+        X1 = X[y == 1]
+        self.plot_spectra([X0, X1], ["sane", "ring"])
 
 
 if __name__ == "__main__":
     data_analyst = DataAnalyse()
-    NUMBER_OF_IMPORTANT_CHANNELS = 55
-    data_analyst.find_significant_channels(
-        n_channels=NUMBER_OF_IMPORTANT_CHANNELS, normalise=True, ring=False
-    )
+    data_analyst.open_and_plot()
+
 
 # From last test with 1 million randomly picked pixels, important channels are :
 # [ 0  1  2  3  4 65 64  5 66 63 67 62 68  6 69 61 70  7 71 27 28 60 72 26 29]

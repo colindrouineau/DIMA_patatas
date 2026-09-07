@@ -15,7 +15,7 @@ from sklearn import metrics
 from data_mod.open_image import OpenImage
 from data_mod.format_data import DataFormatter
 from algo.nn_models import (
-    BinPixNN,
+    CommonNN,
     DistPixNN,
     RingPix3ClassNN,
     RingContPixNN,
@@ -79,7 +79,7 @@ class TrainNN:
 
     def define_mlp_bin_functions(self):
         training_info = utils.load_config("TRAINING_INFO", "LAB_MASK", "MLP")
-        self.model = BinPixNN().to(self.device)
+        self.model = CommonNN().to(self.device)
         self.criterion = nn.BCELoss()
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
         self.step_lr_scheduler = ReduceLROnPlateau(
@@ -223,7 +223,9 @@ class TrainNN:
                 f"F1 score on : training data = {f1_score_training:.4f}, validation data = {f1_score_val:.4f}"
             )
             if self.last_f1_score != 0 and f1_score_val < self.last_f1_score:
-                self.early_stopping.early_stop = True  # The F1 score has stopped increasing
+                self.early_stopping.early_stop = (
+                    True  # The F1 score has stopped increasing
+                )
             self.last_f1_score = f1_score_val
 
     def one_epoch(self, X_train, y_train, X_val, y_val):

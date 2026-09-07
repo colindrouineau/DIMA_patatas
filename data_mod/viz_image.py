@@ -12,6 +12,7 @@ import spectral as sp1
 
 from data_mod.open_image import OpenImage
 from data_mod.data_processing import ProcessImage
+from data_mod.format_data import DataFormatter
 import utils
 
 COLORS = np.array(
@@ -41,6 +42,7 @@ class VizImage:
         self.open_im = OpenImage()
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
         self.data_process = ProcessImage()
+        self.format_data = DataFormatter()
 
     def show_channel(
         self, leaf, channel_number, normalise=False, threshold=None, noise=False
@@ -73,20 +75,18 @@ class VizImage:
         plt.colorbar()
         plt.show()
 
-    def open_png(self, path, title=None): 
+    def open_png(self, path, title=None, recalibrate=True):
         arr = np.array(Image.open(path))
+        print(f"The different values of the pixels are : {np.unique(arr)}")
+        if recalibrate:
+            arr = self.format_data.make_leaf_visible(arr)
         plt.imshow(arr)
         plt.title(title)
         plt.colorbar()
         plt.show()
 
-
     def show_leaf_evol(
-        self,
-        leaf_number: int,
-        side="enves",
-        channel: int = 70,
-        mask_type="origin"
+        self, leaf_number: int, side="enves", channel: int = 70, mask_type="origin", recalibrate=False
     ):
         """Show and save animation of the temporal evolution of a given leaf
 
@@ -100,16 +100,18 @@ class VizImage:
             np.array(sp1.envi.open(file).asarray())[:, :, channel] for file in paths
         ]
 
-        if mask_type=="origin":
+        if mask_type == "origin":
             lab_mask_path = os.path.join(
-            self.data_dir, "Lab_Feb2025_Mask", f"foliolo{leaf_number}", side
-        )
-        if mask_type=="temporal":
+                self.data_dir, "Lab_Feb2025_Mask", f"foliolo{leaf_number}", side
+            )
+        if mask_type == "temporal":
             lab_mask_path = os.path.join(
-                        self.data_dir, "Temporal_Mask", f"foliolo{leaf_number}", side
-                    )
+                self.data_dir, "Temporal_Mask", f"foliolo{leaf_number}", side
+            )
         paths = utils.sort_images(glob.glob(f"{lab_mask_path}/*.png"))
         lab_images = [np.array(Image.open(file)) for file in paths]
+        if recalibrate:
+            lab_images = self.format_data.make_leaf_visible(lab_images)
 
         time_states = [
             path.split("/")[-1].split(".")[0].split("_")[-1] for path in paths
@@ -164,7 +166,6 @@ class VizImage:
         # Connect the slider to the update function
         slider.on_changed(update)
         plt.show()
-
 
     def plot_y_real_pred(self, y_real, y_pred, title=None):
         """shows side by side predicted and real label."""
@@ -266,12 +267,6 @@ class VizImage:
 
         plt.show()
 
-    def viz_temp_mask(self):
-        pass
-
-
-
-
 
 if __name__ == "__main__":
     LEAF_NAME = "foliolo9_enves_a5"
@@ -288,5 +283,10 @@ if __name__ == "__main__":
     #
     # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER, normalise=True, threshold=1)
 
-    LEAF_NUMBER = 7
-    im_viz.show_leaf_evol(LEAF_NUMBER, channel=CHANNEL_NUMBER, mask_type="origin")
+    im_viz.open_png(
+        path="/home/colind/work/Mines/TR_DIMA/DIMA_code/data/Temporal_Mask/foliolo3/enves/foliolo3_enves_a5.png",
+        recalibrate=False,
+    )
+
+    LEAF_NUMBER = 3
+    im_viz.show_leaf_evol(LEAF_NUMBER, channel=CHANNEL_NUMBER, mask_type="temporal", recalibrate=False)
