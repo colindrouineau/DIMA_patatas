@@ -137,7 +137,7 @@ class TrainForest:
 
     def tree_perf(self):
         """Prints performance of all the saved decision tree models"""
-        models_dir = os.path.join(self.data_dir, "..", "model_backup", "tree")
+        models_dir = os.path.join(self.data_dir, "..", "model_info", "model_backup", "tree")
         model_names = os.listdir(models_dir)
         for model_name in model_names:
             channels = utils.get_channels_from_name(model_name)
@@ -152,7 +152,7 @@ class TrainForest:
 
 class Tester:
     def one_tree_perf(self, model_name, X_val, y_val):
-        models_dir = os.path.join(self.data_dir, "..", "model_backup", "tree")
+        models_dir = os.path.join(self.data_dir, "..", "model_info", "model_backup", "tree")
         model_path = os.path.join(models_dir, model_name)
         # Load the saved model
         loaded_model_joblib = load(model_path)
@@ -169,7 +169,7 @@ class Tester:
             return y_predicted
 
     def one_forest_perf(self, model_name, X_val, y_val):
-        models_dir = os.path.join(self.data_dir, "..", "model_backup", "rd_forest")
+        models_dir = os.path.join(self.data_dir, "..", "model_info", "model_backup", "rd_forest")
         model_path = os.path.join(models_dir, model_name)
         # Load the saved model
         loaded_model_joblib = load(model_path)

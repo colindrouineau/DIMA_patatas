@@ -1,6 +1,26 @@
 import yaml
 import ast
+from colorama import Fore, Style
 
+def cprint(text, colour="CYAN", print_type=False):
+    object_type = type(text)
+    text = str(text)
+    colour = colour.upper()
+    assert colour in ["BLUE", "CYAN", "RED"], (
+        "colour must be either blue, cyan or red, not" + colour
+    )
+    if colour == "BLUE":
+        print(
+            Fore.BLUE
+            + text
+            + "   "
+            + (str(object_type) if print_type else "")
+            + Style.RESET_ALL
+        )
+    if colour == "CYAN":
+        print(Fore.CYAN + text + Style.RESET_ALL)
+    if colour == "RED":
+        print(Fore.RED + text + Style.RESET_ALL)
 
 def load_config(
     first_key: str = None,

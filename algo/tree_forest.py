@@ -15,7 +15,7 @@ class DecisionTree(DecisionTreeClassifier):
     def save_tree(self, file_name):
         tree_backup_path = os.path.join(
             utils.load_config("PATH", "DATA_DIR"),
-            "..",
+            "..", "model_info"
             "model_backup",
             "tree",
         )
@@ -52,7 +52,7 @@ class RandomForest(RandomForestClassifier):
     def save_forest(self, file_name):
         tree_backup_path = os.path.join(
             utils.load_config("PATH", "DATA_DIR"),
-            "..",
+            "..", "model_info"
             "model_backup",
             "rd_forest",
         )

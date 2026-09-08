@@ -12,10 +12,6 @@ from data_mod.viz_image import VizImage
 from data_mod.data_analysis import DataAnalyse
 from algo.nn_models import (
     CommonNN,
-    DistPixNN,
-    RingPix3ClassNN,
-    RingContPixNN,
-    RingPixOnlyNN,
 )
 import utils
 
@@ -23,13 +19,13 @@ import utils
 class ModelTester:
     """Class to val models"""
 
-    def __init__(self, model_path, round_labels=False):
+    def __init__(self, model_path, round_labels=False, threshold=0.1, real_test=False):
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
         self.device = torch.device(utils.load_config("TRAINING_INFO", "DEVICE"))
-        self.data_formatter = DataFormatter()
-        self.data_formatter.balance = False  # Balance is only useful for training
-        self.val_leaves = utils.load_config("DATA", "VALIDATION_LEAVES")
-        self.test_leaves = utils.load_config("DATA", "TEST_LEAVES")
+        self.data_formatter = DataFormatter(test=True, balance_data=False)
+        val_leaves = utils.load_config("DATA", "VALIDATION_LEAVES")
+        test_leaves = utils.load_config("DATA", "TEST_LEAVES")
+        self.leaves = test_leaves if real_test else val_leaves
         self.visualise = VizImage()
         self.data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
         self.model_type = utils.load_config("TRAINING_CHOICE", "MODEL_TYPE")
@@ -37,21 +33,16 @@ class ModelTester:
         self.model_path = model_path
         if model_path is not None:
             self.model_name = model_path.split("/")[-1]
-        self.threshold = utils.load_config(
-            "TRAINING_INFO",
-            self.data_type.upper(),
-            self.model_type.upper(),
-            "LABEL_THRESHOLD",
-        )
+        self.threshold = threshold
 
-    def performance_on_whole_dataset(self, real_test=False, thresh_search=False):
+    def performance_on_whole_dataset(self, thresh_search=False):
         """Prints performance of model on the whole validation dataset"""
         with torch.no_grad():
             # writer.add_image('mnist_images', img_grid) (to add an image
-            leaves = self.test_leaves if real_test else self.val_leaves
-            x_set, y_set = self.data_formatter.load_data(leaf_numbers=leaves)
-            X_val, y_val = self.data_formatter.scale_and_format_data(x_set, y_set)
-            print(f"Performance of model {self.model_name} on validation dataset:")
+            X_val, y_val, _ = self.open_val_data()
+            utils.cprint(
+                f"Performance of model {self.model_name} on validation dataset:"
+            )
             y_pred, y_val = self.load_nn_and_perf(X_val, y_val)
             if thresh_search:
                 self.threshold, _ = self.find_best_threshold(y_val, y_pred, show=True)
@@ -70,8 +61,9 @@ class ModelTester:
 
         best_threshold = np.argmax(f1_scores) / n
         best_score = np.max(f1_scores)
-        print(
-            f"best_threshold is {best_threshold:.4f} with f1_score = {best_score:.4f}"
+        utils.cprint(
+            f"best_threshold is {best_threshold:.4f} with f1_score = {best_score:.4f}",
+            colour="RED",
         )
 
         if show:
@@ -84,24 +76,6 @@ class ModelTester:
             plt.legend()
             plt.show()
         return best_threshold, best_score
-
-    def performance(self, y_val, y_predicted):
-        """Prints model performance, returns metrics, and formats the labels to match `analyse_one_leaf` requirements
-
-        Returns
-        -------
-        metrics_dictionary, y_predicted, y_val
-        """
-        if self.data_type in ["lab_mask", "ring_mask_only"]:
-            return self.performance_2class(y_val, y_predicted)
-        if self.data_type == "dist_mask":
-            return self.performance_continuous(y_val, y_predicted)
-        if self.data_type == "ring_mask":
-            return self.performance_ring(y_val, y_predicted)
-        if self.data_type == "ring_mask_cont":
-            return self.performance_continuous(
-                y_val, y_predicted
-            )  # MAY BE RELEVANT TO ADD A CLASSIFICATION THRESHOLD
 
     def performance_2class(self, y_val, y_predicted) -> tuple:
         """Print performance information of a 2-class classification model
@@ -139,48 +113,8 @@ class ModelTester:
         }
         return metrics_dictionary, y_predicted, y_val
 
-    def performance_continuous(self, y_val, y_predicted):
-        y_val = y_val.flatten()
-        y_predicted = y_predicted.flatten()
-        mse = metrics.mean_squared_error(y_val, y_predicted)
-        print("Model's performances on val dataset: ")
-        print(f"Mean squared error = {mse:.2f}")
-        metrics_dictionary = {"mse": mse}
-        return metrics_dictionary, y_predicted, y_val
-
-    def performance_ring(self, y_val, y_pred):
-        # to 0 (healthy), 1 (ring), 2 (sick)
-        y_val[y_val == 255] = 0
-        y_val[y_val == 100] = 1
-        y_val[y_val == 200] = 2
-
-        def keep_likely_class(x):
-            return np.argmax(x)
-
-        # To 1D
-        y_pred = np.apply_along_axis(func1d=keep_likely_class, axis=1, arr=y_pred)
-        y_val = np.apply_along_axis(func1d=keep_likely_class, axis=1, arr=y_val)
-        """Flatten pose un problème pour ring mask puisque les labels sont de dimension 3.
-        Il faut réfléchir à comment je deal avec ça.
-        Pour le moment je choisis la catégorie avec la plus grande probabilité."""
-        target_names = ["healthy", "ring", "sick"]
-        print(
-            "Classification Report:\n",
-            metrics.classification_report(y_val, y_pred, target_names=target_names),
-        )
-        class_dict = metrics.classification_report(
-            y_val,
-            y_pred,
-            output_dict=True,
-            target_names=target_names,
-            zero_division="warn",
-        )
-        return class_dict["ring"], y_pred, y_val
-
     def open_val_data(self):
-        original_X_val, y_set = self.data_formatter.load_data(
-            leaf_numbers=self.val_leaves
-        )
+        original_X_val, y_set = self.data_formatter.load_data(leaf_numbers=self.leaves)
         X_val, y_val = self.data_formatter.scale_and_format_data(
             np.copy(original_X_val), y_set
         )
@@ -190,16 +124,7 @@ class ModelTester:
         if "whole_model_backup" in model_path:  # then we load the whole mode
             loaded_model = jit.load(model_path).to(self.device)
         else:
-            if self.data_type == "lab_mask":
-                loaded_model = CommonNN().to(self.device)
-            if self.data_type == "dist_mask":
-                loaded_model = DistPixNN().to(self.device)
-            if self.data_type == "ring_mask":
-                loaded_model = RingPix3ClassNN().to(self.device)
-            if self.data_type == "ring_mask_cont":
-                loaded_model = RingContPixNN().to(self.device)
-            if self.data_type == "ring_mask_only":
-                loaded_model = RingPixOnlyNN().to(self.device)
+            loaded_model = CommonNN().to(self.device)
             loaded_model.load_state_dict(torch.load(model_path))
         loaded_model.eval()
         return loaded_model
@@ -219,12 +144,12 @@ class ModelTester:
             except Exception as e:
                 print(e)
                 print(
-                    f"Make sure you selected the right number of channels for the loaded model. (number_of_channels = {self.data_formatter.number_of_channels})"
+                    f"Make sure you selected the right number of channels for the loaded model. (number_of_channels = {len(self.channels)})"
                 )
                 sys.exit()
             y_val = y_val.to("cpu").numpy()
             y_predicted = y_predicted.to("cpu").numpy()
-            _, y_predicted, y_val = self.performance(y_val, y_predicted)
+            _, y_predicted, y_val = self.performance_2class(y_val, y_predicted)
         return y_predicted, y_val
 
     def analyse_one_leaf(self, leaf):
@@ -234,7 +159,7 @@ class ModelTester:
         :param str leaf: leaf_name
         :param str model_path: path where the model was saved
         """
-        print(f"Performance of model {self.model_name} on leaf {leaf} :")
+        utils.cprint(f"Performance of model {self.model_name} on leaf {leaf} :")
 
         X_val, y_val = self.data_formatter.leaf_mask_data(leaf)
         X_val, y_val = self.data_formatter.scale_and_format_data(X_val, y_val)
@@ -253,10 +178,9 @@ class ModelTester:
         NOTE : works only for 2 class classification."""
         self.round = True
         X_val, y_val, X_raw = self.open_val_data()
-        print(f"Performance of model {self.model_name} on validation dataset :")
+        utils.cprint(f"Performance of model {self.model_name} on validation dataset :")
         y_pred, y_val = self.load_nn_and_perf(X_val, y_val)
         y_pred = np.where(y_pred <= self.threshold, 0, 1).astype(bool)
-        y_val = np.where(y_val <= self.threshold, 0, 1).astype(bool)
         TN = X_raw[~y_pred & ~y_val]
         TP = X_raw[y_pred & y_val]
         FP = X_raw[y_pred & ~y_val]
@@ -266,12 +190,14 @@ class ModelTester:
 
 
 if __name__ == "__main__":
-    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_backup/ring_mask_only/20-04--09:01_MLP.pth"
+    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_info/whole_model_backup/lab_mask/08-09--10:11_MLP.zip"
 
-    model_tester = ModelTester(model_path=MODEL_PATH_MLP, round_labels=True)
+    model_tester = ModelTester(
+        model_path=MODEL_PATH_MLP, round_labels=False, real_test=False
+    )
 
-    LEAF = "foliolo4_enves_a12"
+    LEAF = "foliolo7_enves_a9"
 
-    model_tester.performance_on_whole_dataset(real_test=True)
+    model_tester.performance_on_whole_dataset(thresh_search=True)
     model_tester.analyse_one_leaf(LEAF)
     model_tester.compare_class_spectra()

@@ -35,19 +35,19 @@ class DataAnalyse:
         total_pixels = np.sum([len(pixel_class) for pixel_class in class_list])
 
         for pixel_class, label, color in zip(class_list, label_list, COLORS):
-
             quantiles = np.percentile(pixel_class, [2.5, 97.5], axis=0)
-            plt.plot(
-                channels,
-                quantiles[0],
-                color=color,
-                label=f"{label} 95% confidence envelope",
-                linestyle="--",
-            )
-            plt.plot(channels, quantiles[1], color=color, linestyle="--")
-            plt.fill_between(
-                channels, quantiles[0], quantiles[1], color=color, alpha=0.1
-            )
+            if len(class_list) <= 2:
+                plt.plot(
+                    channels,
+                    quantiles[0],
+                    color=color,
+                    label=f"{label} 95% confidence envelope",
+                    linestyle="--",
+                )
+                plt.plot(channels, quantiles[1], color=color, linestyle="--")
+                plt.fill_between(
+                    channels, quantiles[0], quantiles[1], color=color, alpha=0.1
+                )
 
             class_mean = np.mean(pixel_class, axis=0)
             plt.plot(channels, class_mean, label=f"{label} mean", color=color)

@@ -15,7 +15,7 @@ class DataFormatter:
     class to format data for training
     """
 
-    def __init__(self):
+    def __init__(self, test=False, balance_data=True):
         """
         initiates attributes using CONFIG information
         """
@@ -27,6 +27,8 @@ class DataFormatter:
         if self.channels == 'all':
             self.channels = list(range(111))
         self.image_process = ProcessImage()
+        self.test = test
+        self.balance_data = balance_data
 
     def leaf_mask_data(self, leaf, return_mask=False):
         """Filters pixels on the leaf and format data to a list.
@@ -67,11 +69,14 @@ class DataFormatter:
         is_sick = lab_arr == 200
 
         if self.data_type == "lab_mask":
-            # Select pixels in the leaf, not too sick, and not in the ring
-            mask = (in_the_leaf & ~too_sick) & ~in_the_ring
+            if self.test:
+                mask = in_the_leaf
+            else:
+                # Select pixels in the leaf, not too sick, and not in the ring
+                mask = (in_the_leaf & ~too_sick) & ~in_the_ring
             # label = 1 if the pixel is sick, 0 otherwise
             label_arr = np.where(lab_arr == 200, 1, 0)
-        if self.data_type in ["dist_mask", "temp_mask"]:
+        if self.data_type in ["dist_mask", "temp_mask"]: 
             # Select pixels in the leaf, not sick
             mask = in_the_leaf & ~is_sick
             label_arr = lab_arr
@@ -108,8 +113,7 @@ class DataFormatter:
         # for lab_mask label
         # check if the labeling is continuous or 0,1
         if dimension == 1:
-            arr = self.make_leaf_visible(arr)
-            y_real[leaf_mask] = self.make_leaf_visible(y_real[leaf_mask])
+            y_real[leaf_mask] = y_real[leaf_mask]
             to_leaf_form = np.zeros((height, width))
         elif dimension == 2:
             bands = arr.shape[1]
@@ -127,28 +131,7 @@ class DataFormatter:
 
         return y_real, to_leaf_form
 
-    def make_leaf_visible(self, y, minimum=None):
-        print("For image visibility, the value of the pixels are recalibrated.")
-        category = list(np.unique(y).astype(int)) == [0, 1]
-        if category:
-            # put y_pred to 0, 200, 255 format like y_real
-            y = np.where(y == 1, 200, 255)
-        if type(y) == list:
-            min1, min2 = np.sort(np.unique(y[0]))[0:2]
-            minimum = min2 if min1 == 0 else min1
-            return [self.make_leaf_visible(arr, minimum=minimum) for arr in y]
-        else:
-            # 0 = out of leaf. Fill the whole possible range of values ([0,255])
-            print(
-                f"Before recalibration, we had : min(y) = {np.min(y):.2f} and max(y) = {np.max(y):.2f}"
-            )
-            if minimum is None:
-                min1, min2 = np.sort(np.unique(y))[0:2]
-                minimum = min2 if min1 == 0 else min1
-            y = np.where(y == 0, 0, 255 / (np.max(y) - minimum) * (y - minimum))
-        return y
-
-    def load_data(self, leaf_numbers=None, balance_data=True):
+    def load_data(self, leaf_numbers=None):
         """Load data.
         Set number of samples and number of features as attributes.
 
@@ -173,7 +156,6 @@ class DataFormatter:
 
         for leaf in leaves:
             x, y = self.leaf_mask_data(leaf)
-            x = x[:, self.channels]
             x_set = np.concat((x_set, x))
             y_set = np.concat((y_set, y))
 
@@ -187,13 +169,14 @@ class DataFormatter:
             )
         # shuffle data
         x_set, y_set = shuffle(x_set, y_set)
-        if balance_data:
+        if self.balance_data:
             y0 = y_set[y_set == 0]
             X0 = x_set[y_set == 0]
             y1 = y_set[y_set == 1]
             X1 = x_set[y_set == 1]
             n0 = len(y0) 
             n1 = len(y1) 
+            np.random.seed(1)
             if n0 > n1:
                 rd_0elements = np.random.choice(y0.shape[0], size=n1, replace=False)
                 selected_y0 = y0[rd_0elements]

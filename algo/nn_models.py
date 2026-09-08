@@ -9,7 +9,7 @@ import utils
 def save_model(trace, best_model_state, file_name, data_type):
     """Saves model state_dict. best_model_state is an attribute of EarlyStopping class instance."""
     nn_backup_path = os.path.join(
-        utils.load_config("PATH", "DATA_DIR"), "..", "model_backup", data_type
+        utils.load_config("PATH", "DATA_DIR"), "..", "model_info", "model_backup", data_type
     )
     os.makedirs(nn_backup_path, exist_ok=True)
     file = os.path.join(nn_backup_path, file_name)
@@ -18,7 +18,7 @@ def save_model(trace, best_model_state, file_name, data_type):
 
     # also save the whole model
     nn_backup_path = os.path.join(
-        utils.load_config("PATH", "DATA_DIR"), "..", "whole_model_backup", data_type
+        utils.load_config("PATH", "DATA_DIR"), "..", "model_info", "whole_model_backup", data_type
     )
     os.makedirs(nn_backup_path, exist_ok=True)
     file_name = file_name.split(".")[0] + ".zip"
@@ -33,17 +33,21 @@ class CommonNN(nn.Module):
     def __init__(self):
         super(CommonNN, self).__init__()
         input_size = len(utils.load_config("TRAINING_CHOICE", "CHANNELS"))
-        hidden_size = input_size * 3
+        hidden_size1 = input_size * 2
+        hidden_size2 = input_size * 3
         # self.dropout = nn.Dropout(p=0.5)
-        self.linear1 = nn.Linear(input_size, hidden_size)
+        self.linear1 = nn.Linear(input_size, hidden_size1)
         self.leaky_relu = nn.LeakyReLU()
-        self.linear2 = nn.Linear(hidden_size, 1)
+        self.linear2 = nn.Linear(hidden_size1, hidden_size2)
+        self.linear3 = nn.Linear(hidden_size2, hidden_size1)
+        self.linear4 = nn.Linear(hidden_size1, 1)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        out = self.linear1(x)
-        out = self.leaky_relu(out)
-        out = self.linear2(out)
+        out = self.leaky_relu(self.linear1(x))
+        out = self.leaky_relu(self.linear2(out))
+        out = self.leaky_relu(self.linear3(out))
+        out = self.leaky_relu(self.linear4(out))
         out = self.sigmoid(out)
         return out
 

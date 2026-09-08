@@ -75,18 +75,16 @@ class VizImage:
         plt.colorbar()
         plt.show()
 
-    def open_png(self, path, title=None, recalibrate=True):
+    def open_png(self, path, title=None):
         arr = np.array(Image.open(path))
         print(f"The different values of the pixels are : {np.unique(arr)}")
-        if recalibrate:
-            arr = self.format_data.make_leaf_visible(arr)
         plt.imshow(arr)
         plt.title(title)
         plt.colorbar()
         plt.show()
 
     def show_leaf_evol(
-        self, leaf_number: int, side="enves", channel: int = 70, mask_type="origin", recalibrate=False
+        self, leaf_number: int, side="enves", channel: int = 70, mask_type="origin"
     ):
         """Show and save animation of the temporal evolution of a given leaf
 
@@ -110,8 +108,6 @@ class VizImage:
             )
         paths = utils.sort_images(glob.glob(f"{lab_mask_path}/*.png"))
         lab_images = [np.array(Image.open(file)) for file in paths]
-        if recalibrate:
-            lab_images = self.format_data.make_leaf_visible(lab_images)
 
         time_states = [
             path.split("/")[-1].split(".")[0].split("_")[-1] for path in paths
@@ -284,9 +280,8 @@ if __name__ == "__main__":
     # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER, normalise=True, threshold=1)
 
     im_viz.open_png(
-        path="/home/colind/work/Mines/TR_DIMA/DIMA_code/data/Temporal_Mask/foliolo3/enves/foliolo3_enves_a5.png",
-        recalibrate=False,
+        path="/home/colind/work/Mines/TR_DIMA/DIMA_code/data/Temporal_Mask/foliolo3/enves/foliolo3_enves_a5.png"
     )
 
     LEAF_NUMBER = 3
-    im_viz.show_leaf_evol(LEAF_NUMBER, channel=CHANNEL_NUMBER, mask_type="temporal", recalibrate=False)
+    im_viz.show_leaf_evol(LEAF_NUMBER, channel=CHANNEL_NUMBER, mask_type="temporal")

@@ -3,6 +3,7 @@ import torch.nn as nn
 import copy
 
 class EarlyStopping:
+    """class to stop training when the validation loss decreases too slowly."""
     def __init__(self, patience=20, delta=0):
         self.patience = patience
         self.delta = delta
@@ -35,6 +36,7 @@ class EarlyStopping:
 
 
 class FocalLoss(nn.Module):
+    """Loss function"""
     def __init__(self, alpha=1, gamma=2, reduction="mean"):
         super(FocalLoss, self).__init__()
         self.alpha = alpha  # controls class imbalance

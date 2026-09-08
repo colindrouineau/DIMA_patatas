@@ -16,10 +16,6 @@ from data_mod.open_image import OpenImage
 from data_mod.format_data import DataFormatter
 from algo.nn_models import (
     CommonNN,
-    DistPixNN,
-    RingPix3ClassNN,
-    RingContPixNN,
-    RingPixOnlyNN,
 )
 from algo.test_model import ModelTester
 import utils
@@ -41,7 +37,7 @@ class TrainNN:
 
         """
         self.date = datetime.today().strftime("%d-%m--%H:%M")
-        self.number_of_channels = utils.load_config("DATA", "NUMBER_OF_CHANNELS")
+        self.channels = utils.load_config("TRAINING_CHOICE", "CHANNELS")
         self.model_type = utils.load_config("TRAINING_CHOICE", "MODEL_TYPE")
         self.data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
 
@@ -59,18 +55,15 @@ class TrainNN:
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
         self.exp_name = self.date + "_" + self.model_type
         self.tb_path = os.path.join(
-            self.data_dir, "..", "runs", self.data_type, self.exp_name
+            self.data_dir, "..", "model_info", "runs", self.data_type, self.exp_name
         )
 
         os.makedirs(self.tb_path, exist_ok=True)
         self.writer = SummaryWriter(self.tb_path)
-        self.balance = utils.load_config("TRAINING_CHOICE", "BALANCE")
         self.validation_leaves = utils.load_config("DATA", "VALIDATION_LEAVES")
         self.train_leave_numbers = utils.leaf_training_list()
         self.device = torch.device(utils.load_config("TRAINING_INFO", "DEVICE"))
-        training_info = utils.load_config(
-            "TRAINING_INFO", self.data_type.upper(), self.model_type.upper()
-        )
+        training_info = utils.load_config("TRAINING_INFO", self.model_type.upper())
         self.learning_rate = training_info["LEARNING_RATE"]
         self.num_epochs = training_info["NUM_EPOCHS"]
         self.delta = training_info["DELTA"]
@@ -78,7 +71,7 @@ class TrainNN:
         self.last_f1_score = 0
 
     def define_mlp_bin_functions(self):
-        training_info = utils.load_config("TRAINING_INFO", "LAB_MASK", "MLP")
+        training_info = utils.load_config("TRAINING_INFO", "MLP")
         self.model = CommonNN().to(self.device)
         self.criterion = nn.BCELoss()
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
@@ -86,83 +79,16 @@ class TrainNN:
             self.optimizer,
             "min",
             factor=training_info["FACTOR"],
-            patience=training_info["PATIENCE"],
+            patience=training_info["PATIENCE_LR"],
             threshold=training_info["DELTA"],
         )
         self.early_stopping = train_utils.EarlyStopping(
-            patience=training_info["PATIENCE"], delta=self.delta
+            patience=training_info["PATIENCE_STOP"], delta=self.delta
         )
-
-    def define_mlp_dist_functions(self):
-        training_info = utils.load_config("TRAINING_INFO", "DIST_MASK", "MLP")
-        self.model = DistPixNN().to(self.device)
-        self.criterion = nn.MSELoss()
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
-        self.step_lr_scheduler = ReduceLROnPlateau(
-            self.optimizer,
-            "min",
-            factor=training_info["FACTOR"],
-            patience=training_info["PATIENCE"],
-            threshold=training_info["THRESHOLD"],
-        )
-        self.early_stopping = train_utils.EarlyStopping(patience=100, delta=self.delta)
-
-    def define_mlp_ring_functions(self):
-        training_info = utils.load_config("TRAINING_INFO", "RING_MASK", "MLP")
-        self.model = RingPix3ClassNN().to(self.device)
-        self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
-        self.step_lr_scheduler = ReduceLROnPlateau(
-            self.optimizer,
-            "min",
-            factor=training_info["FACTOR"],
-            patience=training_info["PATIENCE"],
-            threshold=training_info["THRESHOLD"],
-        )
-        self.early_stopping = train_utils.EarlyStopping(patience=100, delta=self.delta)
-
-    def define_mlp_cont_ring_functions(self):
-        training_info = utils.load_config("TRAINING_INFO", "DIST_MASK", "MLP")
-        self.model = RingContPixNN().to(self.device)
-        self.criterion = nn.MSELoss()
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
-        self.step_lr_scheduler = ReduceLROnPlateau(
-            self.optimizer,
-            "min",
-            factor=training_info["FACTOR"],
-            patience=training_info["PATIENCE"],
-            threshold=training_info["THRESHOLD"],
-        )
-        self.early_stopping = train_utils.EarlyStopping(patience=100, delta=self.delta)
-
-    def define_mlp_ringonly_functions(self):
-        training_info = utils.load_config("TRAINING_INFO", "RING_MASK_ONLY", "MLP")
-        self.model = RingPixOnlyNN().to(self.device)
-        # self.criterion = nn.BCELoss()
-        self.criterion = train_utils.FocalLoss(alpha=1, gamma=2)
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
-        self.step_lr_scheduler = ReduceLROnPlateau(
-            self.optimizer,
-            "min",
-            factor=training_info["FACTOR"],
-            patience=training_info["PATIENCE"],
-            threshold=training_info["THRESHOLD"],
-        )
-        self.early_stopping = train_utils.EarlyStopping(patience=10, delta=self.delta)
 
     def define_nn_functions(self):
         """Sets model, criterion, optimizer, lr_scheduler as attributes"""
-        if self.model_type == "MLP" and self.data_type == "lab_mask":
-            self.define_mlp_bin_functions()
-        if self.model_type == "MLP" and self.data_type == "dist_mask":
-            self.define_mlp_dist_functions()
-        if self.model_type == "MLP" and self.data_type == "ring_mask":
-            self.define_mlp_ring_functions()
-        if self.model_type == "MLP" and self.data_type == "ring_mask_cont":
-            self.define_mlp_cont_ring_functions()
-        if self.model_type == "MLP" and self.data_type == "ring_mask_only":
-            self.define_mlp_ringonly_functions()
-
+        self.define_mlp_bin_functions()
         # step_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.97)
 
     def loop_initialiser(self):
@@ -181,9 +107,7 @@ class TrainNN:
         X_val, y_val = self.data_formatter.load_data(
             leaf_numbers=self.validation_leaves
         )
-        X_val, y_val = self.data_formatter.scale_and_format_data(
-            X_val, y_val, scale=True
-        )
+        X_val, y_val = self.data_formatter.scale_and_format_data(X_val, y_val)
 
         self.define_nn_functions()
 
@@ -290,8 +214,6 @@ class TrainNN:
     def nn_results(self):
         """Saves model performance to tensorboard and prints it"""
         with torch.no_grad():
-            # writer.add_image('mnist_images', img_grid) (to add an image
-
             x_set, y_set = self.data_formatter.load_data(
                 leaf_numbers=self.validation_leaves
             )
@@ -304,33 +226,29 @@ class TrainNN:
             y_val = y_val.to("cpu").numpy()
             y_predicted = y_predicted.to("cpu").numpy()
             print(f"Performance of model {self.exp_name} on validation dataset")
-            metrics_dictionary, y_predicted, y_val = self.model_tester.performance(
+            metrics_dictionary, y_predicted, y_val = self.model_tester.performance_2class(
                 y_val, y_predicted
             )
             save = input("Do you want to save this model ? (Y/n)")
             if save not in ["", "y", "Y"]:
                 log_dir = os.path.join(
-                    self.data_dir, "..", "runs", self.data_type, self.exp_name
+                    self.data_dir, "..", "model_info", "runs", self.data_type, self.exp_name
                 )
                 confirm = input(
                     f"You are about to forget this model and delete the folder '{log_dir}' and all the files and folders it contains. Are you sure ? (type 'rm' to delete)"
                 )
                 if confirm == "rm":
                     self.writer.close()
-
                     shutil.rmtree(log_dir)
                     sys.exit()
 
             # PR curve makes sense only for 2 class classification problems
-            if self.data_type in ["lab_mask", "ring_mask_only"]:
-                self.writer.add_pr_curve("recall curve", y_val, y_predicted)
+            self.writer.add_pr_curve("recall curve", y_val, y_predicted)
 
             hparam_dict = {
                 "number of epochs": self.num_epochs,
-                "number of features": self.number_of_channels,
-                "balance dataset": self.balance,
+                "number of features": len(self.channels),
                 "initial lr": self.learning_rate,
-                "normalised": utils.load_config("TRAINING_CHOICE", "NORMALISE"),
             }
             self.writer.add_hparams(
                 hparam_dict=hparam_dict,
@@ -338,14 +256,14 @@ class TrainNN:
                 run_name=self.tb_path,
             )
             training_info = utils.load_config(
-                "TRAINING_INFO", self.data_type.upper(), self.model_type.upper()
+                "TRAINING_INFO", self.model_type.upper()
             )
             training_info = str(training_info)
+            training_functions = f"\n\nModel is : {self.model}, \n Loss function is : {self.criterion}, \n Optimizer is {self.optimizer}"
             self.writer.add_text(
-                tag="model additional tuning", text_string=training_info
+                tag="model additional tuning and functions",
+                text_string=training_info + training_functions,
             )
-            training_functions = f"Model is : {self.model}, \n Loss function is : {self.criterion}, \n Optimizer is {self.optimizer}"
-            self.writer.add_text(tag="model functions", text_string=training_functions)
             self.writer.close()
 
 
