@@ -190,7 +190,7 @@ class ModelTester:
 
 
 if __name__ == "__main__":
-    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_info/model_backup/lab_mask/08-09--21:56_MLP.pth"
+    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_info/model_backup/lab_mask/09-09--15:50_MLP.pth"
 
     model_tester = ModelTester(
         model_path=MODEL_PATH_MLP, round_labels=False, real_test=False, threshold=0.7
@@ -198,10 +198,10 @@ if __name__ == "__main__":
 
     LEAF = "foliolo1_enves_a9"
 
-    model_tester.performance_on_whole_dataset(thresh_search=True)
+    # model_tester.performance_on_whole_dataset(thresh_search=True)
     # model_tester.analyse_one_leaf(LEAF)
     # model_tester.compare_class_spectra()
 
     for i in range(10):
-        LEAF = "foliolo2_enves_a" + str(8 + i)
+        LEAF = "foliolo12_enves_a" + str(5 + i)
         model_tester.analyse_one_leaf(LEAF)

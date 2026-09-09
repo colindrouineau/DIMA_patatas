@@ -23,12 +23,12 @@ TRAINING_INFO :
 
   MLP :
     NUM_EPOCHS : 7000
-    LEARNING_RATE : 0.25
+    LEARNING_RATE : 0.4
     FACTOR : 0.5
     PATIENCE_LR : 50
     PATIENCE_STOP : 100
     LABEL_THRESHOLD : 0.9
-    DELTA : 0.0000005
+    DELTA : 0.0001
   TREE :
     # for decision tree
     MAX_DEPTH : 4  # For no limit : null

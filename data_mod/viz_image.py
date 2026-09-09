@@ -51,10 +51,9 @@ class VizImage:
         self, leaf, channel_number, normalise=False, threshold=None, noise=False
     ):
         """Shows image for chosen channel"""
-        channels = list(range(111))
-        hsi_arr = self.open_im.hsi_array(leaf, channels=channels)
+        hsi_arr = self.open_im.hsi_array(leaf)
         if normalise:  # apply normalise to all pixels
-            hsi_arr = self.data_process.normalise_image_spectra(hsi_arr)
+            hsi_arr = self.sp_op.normalise(hsi_arr)
         im_channel = hsi_arr[:, :, channel_number]
 
         if noise:
@@ -207,8 +206,6 @@ class VizImage:
         spectra_data = []
         crosses = []
 
-        self.l = 0
-
         # Function to handle mouse clicks
         def on_click(event):
             nonlocal spectra_lines, spectra_data, crosses
@@ -231,10 +228,7 @@ class VizImage:
 
             # Get the clicked pixel coordinates (rounded to nearest integer)
             x, y = int(event.xdata + 0.5), int(event.ydata + 0.5)
-
-            lab = ["stem", 'sick', 'ring', 'sane', 'main_vein', 'side_vein']
             
-
             # Ensure the click is within the image bounds
             if 0 <= x < hsi_arr.shape[1] and 0 <= y < hsi_arr.shape[0]:
                 spectrum = hsi_arr[y, x, :]
@@ -247,10 +241,8 @@ class VizImage:
                     np.arange(len(spectrum)),
                     spectrum,
                     color=color,
-                    label=lab[self.l]
-                    # label=f"Pixel ({x}, {y})",
+                    label=f"Pixel ({x}, {y})",
                 )
-                self.l += 1
                 spectra_lines.append(line)
 
                 # Draw a cross on the image at (x, y) with the same color
@@ -280,9 +272,10 @@ if __name__ == "__main__":
     im_viz = VizImage()
 
     CHANNEL_NUMBER = 70
+    # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER, normalise=False)
 
-    im_viz.spectrogram_interactive_mapping(CHANNEL_NUMBER, LEAF_NAME, normalise=True)
+    # im_viz.spectrogram_interactive_mapping(CHANNEL_NUMBER, LEAF_NAME, normalise=True)
 
 
-    LEAF_NUMBER = 2
+    LEAF_NUMBER = 12
     im_viz.show_leaf_evol(LEAF_NUMBER, channel=CHANNEL_NUMBER, mask_type="origin")

@@ -64,9 +64,7 @@ class TrainNN:
         training_info = utils.load_config("TRAINING_INFO", self.model_type.upper())
         self.learning_rate = training_info["LEARNING_RATE"]
         self.num_epochs = training_info["NUM_EPOCHS"]
-        self.delta = training_info["DELTA"]
         self.threshold = training_info["LABEL_THRESHOLD"]
-        self.last_f1_score = 0
 
         self.model_tester = ModelTester(
             model_path=None, threshold=self.threshold
@@ -85,7 +83,7 @@ class TrainNN:
             threshold=training_info["DELTA"],
         )
         self.early_stopping = train_utils.EarlyStopping(
-            patience=training_info["PATIENCE_STOP"], delta=self.delta
+            patience=training_info["PATIENCE_STOP"], delta=training_info["DELTA"]
         )
 
     def define_nn_functions(self):
@@ -126,7 +124,7 @@ class TrainNN:
         self.writer.add_scalar(
             "Learning_rate", self.step_lr_scheduler.get_last_lr()[0], epoch + 1
         )
-        if (epoch + 1) % (max(self.num_epochs // 2000, 1)) == 0 or epoch == 0:
+        if (epoch + 1) % 10 == 0 or epoch == 0:
             with torch.no_grad():
                 y_pred_round = np.where(
                     y_pred.to("cpu").numpy() <= self.threshold, 0, 1
@@ -148,11 +146,6 @@ class TrainNN:
             print(
                 f"F1 score on : training data = {f1_score_training:.4f}, validation data = {f1_score_val:.4f}"
             )
-            if self.last_f1_score != 0 and f1_score_val < self.last_f1_score:
-                self.early_stopping.early_stop = (
-                    True  # The F1 score has stopped increasing
-                )
-            self.last_f1_score = f1_score_val
 
     def one_epoch(self, X_train, y_train, X_val, y_val):
         # validation

@@ -2,9 +2,11 @@ import torch
 import torch.nn as nn
 import copy
 
+
 class EarlyStopping:
     """class to stop training when the validation loss decreases too slowly."""
-    def __init__(self, patience=20, delta=0):
+
+    def __init__(self, patience, delta):
         self.patience = patience
         self.delta = delta
         self.best_score = None
@@ -18,11 +20,8 @@ class EarlyStopping:
         if self.best_score is None:
             self.best_score = score
             self.best_model_state = copy.deepcopy(model.state_dict())
-        # Stop if the improvement is not good enough
-        elif (
-            abs(self.best_score) - abs(score)
-            < self.delta
-        ):
+        # Stop if the improvement is not good enough for a too long time
+        elif score - self.best_score < self.delta:
             self.counter += 1
             if self.counter >= self.patience:
                 self.early_stop = True
@@ -37,6 +36,7 @@ class EarlyStopping:
 
 class FocalLoss(nn.Module):
     """Loss function"""
+
     def __init__(self, alpha=1, gamma=2, reduction="mean"):
         super(FocalLoss, self).__init__()
         self.alpha = alpha  # controls class imbalance

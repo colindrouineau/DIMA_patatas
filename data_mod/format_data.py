@@ -1,12 +1,12 @@
 import numpy as np
 from tqdm import tqdm
-from sklearn.preprocessing import StandardScaler
 from sklearn.utils import shuffle
 
 import torch
 
 from data_mod.open_image import OpenImage
 from data_mod.data_transformation import ProcessImage
+from data_mod.operation_on_spectra import SpectraOperation
 import utils
 
 
@@ -203,14 +203,13 @@ class DataFormatter:
         x_set,
         y_set,
         to_tensor=True,
-        scale=True,
+        scale=False,
         requires_grad: bool = False,
     ) -> tuple:
         """Fits the data for Neural Network training. Optional parameters to specify data type and transformation."""
         # Add duplicates in the training set to have 50/50 distribution of sick/non sick pixels
         if scale:
-            sc = StandardScaler()
-            x_set = sc.fit_transform(x_set)
+            x_set = SpectraOperation().normalise(x_set)
         if to_tensor:
             x_set = torch.from_numpy(x_set.astype(np.float32)).to(self.device)
             y_set = torch.from_numpy(y_set.astype(np.float32)).to(self.device)
