@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 from data_mod.format_data import DataFormatter
 from data_mod.viz_image import VizImage, COLORS
-from data_mod.data_processing import ProcessImage
+from data_mod.data_transformation import ProcessImage
 from data_mod.data_analysis import DataAnalyse
 
 

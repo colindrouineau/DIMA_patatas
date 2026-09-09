@@ -5,14 +5,16 @@ import matplotlib
 matplotlib.use("TkAgg")
 from matplotlib import pyplot as plt
 from matplotlib.widgets import Slider
+from sklearn.preprocessing import StandardScaler
 
 from PIL import Image
 import numpy as np
 import spectral as sp1
 
 from data_mod.open_image import OpenImage
-from data_mod.data_processing import ProcessImage
+from data_mod.data_transformation import ProcessImage
 from data_mod.format_data import DataFormatter
+from data_mod.operation_on_spectra import SpectraOperation
 import utils
 
 COLORS = np.array(
@@ -43,6 +45,7 @@ class VizImage:
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
         self.data_process = ProcessImage()
         self.format_data = DataFormatter()
+        self.sp_op = SpectraOperation()
 
     def show_channel(
         self, leaf, channel_number, normalise=False, threshold=None, noise=False
@@ -194,7 +197,7 @@ class VizImage:
         # Initialize the spectrum subplot
         (line,) = ax_spectrum.plot([], [])
         ax_spectrum.set_title("Pixel Spectrum")
-        y_lim = (-1.5, 2)
+        y_lim = (-2, 2)
         ax_spectrum.set_ylim(y_lim)
         ax_spectrum.set_xlabel("channel")
         ax_spectrum.set_ylabel("intensity")
@@ -203,6 +206,8 @@ class VizImage:
         spectra_lines = []
         spectra_data = []
         crosses = []
+
+        self.l = 0
 
         # Function to handle mouse clicks
         def on_click(event):
@@ -227,11 +232,14 @@ class VizImage:
             # Get the clicked pixel coordinates (rounded to nearest integer)
             x, y = int(event.xdata + 0.5), int(event.ydata + 0.5)
 
+            lab = ["stem", 'sick', 'ring', 'sane', 'main_vein', 'side_vein']
+            
+
             # Ensure the click is within the image bounds
             if 0 <= x < hsi_arr.shape[1] and 0 <= y < hsi_arr.shape[0]:
                 spectrum = hsi_arr[y, x, :]
                 if normalise:
-                    spectrum = self.data_process.normalise_signal(spectrum)
+                    spectrum = self.sp_op.normalise(spectrum)
                 spectra_data.append((x, y, spectrum))
                 color = COLORS[len(spectra_lines) % 10]
                 # Plot the new spectrum
@@ -239,8 +247,10 @@ class VizImage:
                     np.arange(len(spectrum)),
                     spectrum,
                     color=color,
-                    label=f"Pixel ({x}, {y})",
+                    label=lab[self.l]
+                    # label=f"Pixel ({x}, {y})",
                 )
+                self.l += 1
                 spectra_lines.append(line)
 
                 # Draw a cross on the image at (x, y) with the same color
@@ -265,23 +275,14 @@ class VizImage:
 
 
 if __name__ == "__main__":
-    LEAF_NAME = "foliolo9_enves_a5"
+    LEAF_NAME = "foliolo3_enves_a6"
 
     im_viz = VizImage()
 
-    # im_viz.open_png("data/Temporal_Mask/foliolo9/enves/foliolo9_enves_a10.png", title="Temporal label")
-
     CHANNEL_NUMBER = 70
 
-    # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER)
-    #
-    # im_viz.spectrogram_interactive_mapping(CHANNEL_NUMBER, LEAF_NAME, normalise=False)
-    #
-    # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER, normalise=True, threshold=1)
+    im_viz.spectrogram_interactive_mapping(CHANNEL_NUMBER, LEAF_NAME, normalise=True)
 
-    im_viz.open_png(
-        path="/home/colind/work/Mines/TR_DIMA/DIMA_code/data/Temporal_Mask/foliolo3/enves/foliolo3_enves_a5.png"
-    )
 
-    LEAF_NUMBER = 3
-    im_viz.show_leaf_evol(LEAF_NUMBER, channel=CHANNEL_NUMBER, mask_type="temporal")
+    LEAF_NUMBER = 2
+    im_viz.show_leaf_evol(LEAF_NUMBER, channel=CHANNEL_NUMBER, mask_type="origin")

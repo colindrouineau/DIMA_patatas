@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from data_mod.format_data import DataFormatter
-from data_mod.data_processing import ProcessImage
+from data_mod.data_transformation import ProcessImage
 from data_mod.viz_image import COLORS
 
 
@@ -64,6 +64,7 @@ class DataAnalyse:
         X0 = X[y == 0]
         X1 = X[y == 1]
         self.plot_spectra([X0, X1], ["sane", "ring"])
+
 
 
 if __name__ == "__main__":

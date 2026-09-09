@@ -6,7 +6,7 @@ from sklearn.utils import shuffle
 import torch
 
 from data_mod.open_image import OpenImage
-from data_mod.data_processing import ProcessImage
+from data_mod.data_transformation import ProcessImage
 import utils
 
 
@@ -50,18 +50,19 @@ class DataFormatter:
         hsi_array = self.open_im.hsi_array(leaf, channels=self.channels)
         lab_arr = self.open_im.lab_array(leaf)
 
-        if self.data_type == "dist_mask":
-            dist_arr = self.open_im.mask_dist_array(leaf)
-            # pixels which are too sick :
-            too_sick = dist_arr > 128 + 5
-            # pixels which are in the ring :
-            in_the_ring = dist_arr < 10
-        else:
-            temp_arr = self.open_im.temp_array(leaf)
-            # pixels which are too sick :
-            too_sick = temp_arr < 128 - 3
-            # pixels which are in the ring :
-            in_the_ring = temp_arr == 128
+        dist_arr = self.open_im.mask_dist_array(leaf)
+        temp_arr = self.open_im.temp_array(leaf)
+
+        # pixels which are too sick :
+        too_sick = dist_arr > 128 + 5
+        # pixels which are in the ring :
+        in_the_ring_dist = dist_arr < 10
+
+        # pixels which are too sick :
+        # too_sick = temp_arr < 128 - 3
+        # pixels which are in the ring :
+        in_the_ring_temp = temp_arr == 128
+        in_the_ring = in_the_ring_dist | in_the_ring_temp
 
         # pixels which are in the leaf :
         in_the_leaf = lab_arr > 0.01  # for labels
@@ -85,7 +86,7 @@ class DataFormatter:
 
         leaf_mask = mask_hsi & mask
         if return_mask:
-            return label_arr, leaf_mask
+            return lab_arr, leaf_mask
         x_leaf_pixels = hsi_array[leaf_mask]
         y_leaf_labels = label_arr[leaf_mask]
 
@@ -146,7 +147,10 @@ class DataFormatter:
         y_set : np.array
             Labels array. Dim (number_of_samples)
         """
-        leaves = self.open_im.leaves(leaf_numbers=leaf_numbers)
+        if type(leaf_numbers[0]) == str:  # then a particular leaf is selected
+            leaves = leaf_numbers
+        else:
+            leaves = self.open_im.leaves(leaf_numbers=leaf_numbers)
         verbose = len(leaves) > 50
         if verbose:
             leaves = tqdm(leaves, desc="loading data", unit="leaf")
@@ -160,13 +164,7 @@ class DataFormatter:
             y_set = np.concat((y_set, y))
 
         n_samples, n_features = x_set.shape
-        if verbose:
-            print(
-                f"There are {n_samples} pixels in the loaded dataset with each {n_features} channels"
-            )
-            print(
-                f"The proportion of bad (sick or soon sick) pixels is {100 * np.mean(y_set):.2f} %"
-            )
+
         # shuffle data
         x_set, y_set = shuffle(x_set, y_set)
         if self.balance_data:
@@ -191,6 +189,13 @@ class DataFormatter:
                 x_set = np.concatenate((selected_X1, X0))
         # shuffle data
         x_set, y_set = shuffle(x_set, y_set)
+        if verbose:
+            print(
+                f"There are {n_samples} pixels in the loaded dataset with each {n_features} channels"
+            )
+            print(
+                f"The proportion of bad (sick or soon sick) pixels is {100 * np.mean(y_set):.2f} %"
+            )
         return x_set, y_set
 
     def scale_and_format_data(

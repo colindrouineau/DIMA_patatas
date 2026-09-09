@@ -19,7 +19,7 @@ import utils
 class ModelTester:
     """Class to val models"""
 
-    def __init__(self, model_path, round_labels=False, threshold=0.1, real_test=False):
+    def __init__(self, model_path, round_labels=False, threshold=0.9, real_test=False):
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
         self.device = torch.device(utils.load_config("TRAINING_INFO", "DEVICE"))
         self.data_formatter = DataFormatter(test=True, balance_data=False)
@@ -34,6 +34,7 @@ class ModelTester:
         if model_path is not None:
             self.model_name = model_path.split("/")[-1]
         self.threshold = threshold
+        self.real_test = real_test
 
     def performance_on_whole_dataset(self, thresh_search=False):
         """Prints performance of model on the whole validation dataset"""
@@ -44,7 +45,7 @@ class ModelTester:
                 f"Performance of model {self.model_name} on validation dataset:"
             )
             y_pred, y_val = self.load_nn_and_perf(X_val, y_val)
-            if thresh_search:
+            if thresh_search and not self.real_test:
                 self.threshold, _ = self.find_best_threshold(y_val, y_pred, show=True)
 
     def find_best_threshold(self, y_val, y_pred, show=True):
@@ -88,10 +89,9 @@ class ModelTester:
         y_val"""
         y_predicted = y_predicted.flatten()
         y_val = y_val.flatten()
-        threshold, _ = self.find_best_threshold(y_val, y_predicted, show=False)
 
-        y_pred = np.where(y_predicted <= threshold, 0, 1).astype(bool)
-        y_valid = np.where(y_val <= threshold, 0, 1).astype(bool)
+        y_pred = np.where(y_predicted <= self.threshold, 0, 1).astype(bool)
+        y_valid = np.where(y_val <= self.threshold, 0, 1).astype(bool)
         if self.round:  # change value of predicted labels
             y_predicted = y_pred
             y_val = y_valid
@@ -190,14 +190,18 @@ class ModelTester:
 
 
 if __name__ == "__main__":
-    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_info/whole_model_backup/lab_mask/08-09--10:11_MLP.zip"
+    MODEL_PATH_MLP = "/home/colind/work/Mines/TR_DIMA/DIMA_code/data/../model_info/model_backup/lab_mask/08-09--21:56_MLP.pth"
 
     model_tester = ModelTester(
-        model_path=MODEL_PATH_MLP, round_labels=False, real_test=False
+        model_path=MODEL_PATH_MLP, round_labels=False, real_test=False, threshold=0.7
     )
 
-    LEAF = "foliolo7_enves_a9"
+    LEAF = "foliolo1_enves_a9"
 
     model_tester.performance_on_whole_dataset(thresh_search=True)
-    model_tester.analyse_one_leaf(LEAF)
-    model_tester.compare_class_spectra()
+    # model_tester.analyse_one_leaf(LEAF)
+    # model_tester.compare_class_spectra()
+
+    for i in range(10):
+        LEAF = "foliolo2_enves_a" + str(8 + i)
+        model_tester.analyse_one_leaf(LEAF)

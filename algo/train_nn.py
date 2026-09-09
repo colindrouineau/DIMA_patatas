@@ -43,9 +43,7 @@ class TrainNN:
 
         self.open_im = OpenImage()
         self.data_formatter = DataFormatter()
-        self.model_tester = ModelTester(
-            model_path=None
-        )  # We don't need to load a model, just performance method
+
 
         if torch.cuda.is_available():
             print("The GPU is available and will be used for computation.")
@@ -69,6 +67,10 @@ class TrainNN:
         self.delta = training_info["DELTA"]
         self.threshold = training_info["LABEL_THRESHOLD"]
         self.last_f1_score = 0
+
+        self.model_tester = ModelTester(
+            model_path=None, threshold=self.threshold
+        )  # We don't need to load a model, just performance method
 
     def define_mlp_bin_functions(self):
         training_info = utils.load_config("TRAINING_INFO", "MLP")
@@ -124,7 +126,7 @@ class TrainNN:
         self.writer.add_scalar(
             "Learning_rate", self.step_lr_scheduler.get_last_lr()[0], epoch + 1
         )
-        if (epoch + 1) % (max(self.num_epochs // 60, 1)) == 0 or epoch == 0:
+        if (epoch + 1) % (max(self.num_epochs // 2000, 1)) == 0 or epoch == 0:
             with torch.no_grad():
                 y_pred_round = np.where(
                     y_pred.to("cpu").numpy() <= self.threshold, 0, 1
