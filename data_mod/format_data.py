@@ -24,7 +24,7 @@ class DataFormatter:
         self.data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
         self.model_type = utils.load_config("TRAINING_CHOICE", "MODEL_TYPE")
         self.channels = utils.load_config("TRAINING_CHOICE", "CHANNELS")
-        if self.channels == 'all':
+        if self.channels == "all":
             self.channels = list(range(111))
         self.image_process = ProcessImage()
         self.test = test
@@ -77,7 +77,7 @@ class DataFormatter:
                 mask = (in_the_leaf & ~too_sick) & ~in_the_ring
             # label = 1 if the pixel is sick, 0 otherwise
             label_arr = np.where(lab_arr == 200, 1, 0)
-        if self.data_type in ["dist_mask", "temp_mask"]: 
+        if self.data_type in ["dist_mask", "temp_mask"]:
             # Select pixels in the leaf, not sick
             mask = in_the_leaf & ~is_sick
             label_arr = lab_arr
@@ -100,27 +100,24 @@ class DataFormatter:
         Returns
         -------
         y_real, to_leaf_form : (np.array, np.array)
-            images of real label and reconstituted leaf
+            images of real label (y_real is zeroed outside the mask) and reconstituted leaf
         """
-        y_real, leaf_mask = self.leaf_mask_data(leaf, return_mask=True)
+        y_real, mask = self.leaf_mask_data(leaf, return_mask=True)
 
         # track mask transformation :
-        height, width = leaf_mask.shape
+        height, width = mask.shape
         position_arr = np.array([[(x, y) for y in range(width)] for x in range(height)])
         # becomes a 1D arr, but we tracked position transformations
-        masked_position_arr = position_arr[leaf_mask]
+        masked_position_arr = position_arr[mask]
 
         dimension = len(arr.shape)
         # for lab_mask label
         # check if the labeling is continuous or 0,1
         if dimension == 1:
-            y_real[leaf_mask] = y_real[leaf_mask]
             to_leaf_form = np.zeros((height, width))
         elif dimension == 2:
             bands = arr.shape[1]
             to_leaf_form = np.zeros((height, width, bands))
-        else:
-            to_leaf_form = np.zeros((height, width))
 
         # reconstitute 2 or 3 D array
         # add missing values
@@ -129,6 +126,8 @@ class DataFormatter:
                 to_leaf_form[x, y] = element
             if dimension == 2:
                 to_leaf_form[x, y, :] = element
+
+        y_real[~mask] = 0
 
         return y_real, to_leaf_form
 
@@ -147,7 +146,9 @@ class DataFormatter:
         y_set : np.array
             Labels array. Dim (number_of_samples)
         """
-        if type(leaf_numbers[0]) == str:  # then a particular leaf is selected
+        if (
+            leaf_numbers is not None and type(leaf_numbers[0]) == str
+        ):  # then a particular leaf is selected
             leaves = leaf_numbers
         else:
             leaves = self.open_im.leaves(leaf_numbers=leaf_numbers)
@@ -172,8 +173,8 @@ class DataFormatter:
             X0 = x_set[y_set == 0]
             y1 = y_set[y_set == 1]
             X1 = x_set[y_set == 1]
-            n0 = len(y0) 
-            n1 = len(y1) 
+            n0 = len(y0)
+            n1 = len(y1)
             np.random.seed(1)
             if n0 > n1:
                 rd_0elements = np.random.choice(y0.shape[0], size=n1, replace=False)
@@ -225,6 +226,11 @@ if __name__ == "__main__":
     LEAF_NAME = "foliolo2_enves_a4"
 
     data_format = DataFormatter()
+    x_set, y_set = data_format.load_data()
+    x_set, y_set = data_format.scale_and_format_data(
+        x_set, y_set, to_tensor=False, scale=True
+    )
+
     X, y = data_format.leaf_mask_data(LEAF_NAME)
     # taking y_real as test y_pred
     y_real, y_pred = data_format.reconstitute_leaf(LEAF_NAME, arr=y)

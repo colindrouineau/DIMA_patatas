@@ -5,8 +5,9 @@ class SpectraOperation:
     def __init__(self):
         pass
 
-    def normalise(self, X):
-        axis = len(X.shape) - 1
-        return (X - np.mean(X, axis=axis, keepdims=True)) / np.std(
-            X, axis=axis, keepdims=True
-        )
+    def normalise(self, X, verbose=False):
+        """Multiply the signal so that it takes values between 0 and 1"""
+        max_intensity = np.max(X)
+        if verbose:
+            print(f"max intensity is {max_intensity}")
+        return X / max_intensity

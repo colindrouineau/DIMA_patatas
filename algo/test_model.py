@@ -22,7 +22,7 @@ class ModelTester:
     def __init__(self, model_path, round_labels=False, threshold=0.9, real_test=False):
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
         self.device = torch.device(utils.load_config("TRAINING_INFO", "DEVICE"))
-        self.data_formatter = DataFormatter(test=True, balance_data=False)
+        self.data_formatter = DataFormatter(test=False, balance_data=False)
         val_leaves = utils.load_config("DATA", "VALIDATION_LEAVES")
         test_leaves = utils.load_config("DATA", "TEST_LEAVES")
         self.leaves = test_leaves if real_test else val_leaves

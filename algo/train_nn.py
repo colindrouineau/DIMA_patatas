@@ -9,7 +9,6 @@ import torch
 from torch import jit
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.tensorboard import SummaryWriter
 from sklearn import metrics
 
 from data_mod.open_image import OpenImage

@@ -196,7 +196,7 @@ class VizImage:
         # Initialize the spectrum subplot
         (line,) = ax_spectrum.plot([], [])
         ax_spectrum.set_title("Pixel Spectrum")
-        y_lim = (-2, 2)
+        y_lim = (0, 1)
         ax_spectrum.set_ylim(y_lim)
         ax_spectrum.set_xlabel("channel")
         ax_spectrum.set_ylabel("intensity")
@@ -267,14 +267,14 @@ class VizImage:
 
 
 if __name__ == "__main__":
-    LEAF_NAME = "foliolo3_enves_a6"
+    LEAF_NAME = "foliolo12_enves_a11"
 
     im_viz = VizImage()
 
     CHANNEL_NUMBER = 70
     # im_viz.show_channel(LEAF_NAME, CHANNEL_NUMBER, normalise=False)
 
-    # im_viz.spectrogram_interactive_mapping(CHANNEL_NUMBER, LEAF_NAME, normalise=True)
+    im_viz.spectrogram_interactive_mapping(CHANNEL_NUMBER, LEAF_NAME, normalise=False)
 
 
     LEAF_NUMBER = 12
