@@ -14,7 +14,7 @@ DATA :
 
 
 TRAINING_CHOICE :
-  DATA_TYPE : "dist_mask"   # dist_mask, lab_mask, temp_mask
+  DATA_TYPE : "lab_mask"   # dist_mask, lab_mask, temp_mask
   MODEL_TYPE : "MLP"  # "MLP"  # or "TREE"
   CHANNELS :  [0, 3, 9, 13, 17, 20, 24, 27, 29, 30, 31, 35, 39, 41, 44, 47, 51, 53, 55, 57, 60, 63, 65, 66, 67, 76, 89, 96, 101, 104, 108, 110]  # 'all' # [59,58,60,57,31,30,61,56,32,29,33,28,34,10,11,16,17,15,9,27,68,18,12,67,14]
 
@@ -22,7 +22,7 @@ TRAINING_INFO :
   DEVICE : "cuda"  # or "cpu"
 
   MLP :
-    NUM_EPOCHS : 7000
+    NUM_EPOCHS : 1000
     LEARNING_RATE : 0.4
     FACTOR : 0.5
     PATIENCE_LR : 50

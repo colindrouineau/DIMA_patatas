@@ -1,6 +1,7 @@
 import sys
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.patches import Patch
 import torch
 
 
@@ -8,7 +9,7 @@ from torch import jit
 
 from sklearn import metrics
 from data_mod.format_data import DataFormatter
-from data_mod.viz_image import VizImage
+from data_mod.viz_image import VizImage, COLORS
 from data_mod.data_analysis import DataAnalyse
 from algo.nn_models import (
     CommonNN,
@@ -22,7 +23,7 @@ class ModelTester:
     def __init__(self, model_path, round_labels=False, threshold=0.9, real_test=False):
         self.data_dir = utils.load_config("PATH", "DATA_DIR")
         self.device = torch.device(utils.load_config("TRAINING_INFO", "DEVICE"))
-        self.data_formatter = DataFormatter(test=False, balance_data=False)
+        self.data_formatter = DataFormatter(test=True, balance_data=False)
         val_leaves = utils.load_config("DATA", "VALIDATION_LEAVES")
         test_leaves = utils.load_config("DATA", "TEST_LEAVES")
         self.leaves = test_leaves if real_test else val_leaves
@@ -157,7 +158,6 @@ class ModelTester:
         Shows predicted label distribution, and gives performance for the specific leaf
 
         :param str leaf: leaf_name
-        :param str model_path: path where the model was saved
         """
         utils.cprint(f"Performance of model {self.model_name} on leaf {leaf} :")
 
@@ -170,6 +170,119 @@ class ModelTester:
             y_pred,
             title=f"Leaf {leaf}, data_type = {self.data_type}, model = {self.model_name}",
         )
+
+    def error_type_on_leaf(self, leaf):
+        """
+        Plots the leaf with coloured pixels for each class (TN, FN, TP, FP). Possibility to click on a pixel to visualise its spectrogram.
+        """
+        channels = utils.load_config("TRAINING_CHOICE", "CHANNELS")
+        utils.cprint(f"Performance of model {self.model_name} on leaf {leaf} :")
+
+        round_save = self.round
+        self.round = True
+
+        X_val, y_val = self.data_formatter.leaf_mask_data(leaf)
+        X_val, y_val = self.data_formatter.scale_and_format_data(X_val, y_val)
+        y_pred, y_val = self.load_nn_and_perf(X_val, y_val)
+        y_leaf, y_pred = self.data_formatter.reconstitute_leaf(leaf, y_pred)
+        X_val = X_val.to("cpu").numpy()
+        _, X_val = self.data_formatter.reconstitute_leaf(leaf, X_val)
+
+        height, width = y_leaf.shape
+        y_class = np.zeros((height, width, 3), dtype=np.uint8)
+        y_class[y_leaf == 0] = (255, 255, 255)
+        y_class[(y_leaf == 255) & (y_pred == 0)] = (0, 180, 0)  # TN
+        y_class[(y_leaf == 200) & (y_pred == 0)] = (255, 0, 0)  # FN
+        y_class[(y_leaf == 255) & (y_pred == 1)] = (255, 255, 0)  # FP
+        y_class[(y_leaf == 200) & (y_pred == 1)] = (0, 0, 0)  # TP
+
+        legend_elements = [
+            Patch(facecolor=(0 / 255, 180 / 255, 0 / 255), label="TN"),
+            Patch(facecolor=(255 / 255, 0 / 255, 0 / 255), label="FN"),
+            Patch(facecolor=(255 / 255, 255 / 255, 0 / 255), label="FP"),
+            Patch(facecolor=(0, 0, 0), label="TP"),
+        ]
+
+        # Create figure and subplots
+        fig, (ax_image, ax_spectrum) = plt.subplots(1, 2, figsize=(10, 5))
+        plt.subplots_adjust(wspace=0.4)
+
+        # Display the selected channel
+        im = ax_image.imshow(y_class)
+        ax_image.legend(handles=legend_elements, loc="upper right")
+        ax_image.set_title(f"Prediction class on {leaf}")
+
+        # Initialize the spectrum subplot
+        (line,) = ax_spectrum.plot([], [])
+        ax_spectrum.set_title("Pixel Spectrum")
+        y_lim = (0, 1)
+        ax_spectrum.set_ylim(y_lim)
+        ax_spectrum.set_xlabel("channel")
+        ax_spectrum.set_ylabel("intensity")
+
+        # Store all spectra and their corresponding lines
+        spectra_lines = []
+        spectra_data = []
+        crosses = []
+
+        # Function to handle mouse clicks
+        def on_click(event):
+            nonlocal spectra_lines, spectra_data, crosses
+            if event.inaxes != ax_image:
+                return  # Ignore clicks outside the image subplot
+
+                # Right click: Reset the spectrum subplot
+            if event.button == 3:  # Right mouse button
+                for line in spectra_lines:
+                    line.remove()
+                for cross in crosses:
+                    for part in cross:
+                        part.remove()
+                spectra_lines = []
+                spectra_data = []
+                crosses = []
+                ax_spectrum.set_title("Pixel Spectrum")
+                fig.canvas.draw()
+                return
+
+            # Get the clicked pixel coordinates (rounded to nearest integer)
+            x, y = int(event.xdata + 0.5), int(event.ydata + 0.5)
+            
+            # Ensure the click is within the image bounds
+            if 0 <= x < X_val.shape[1] and 0 <= y < X_val.shape[0]:
+                spectrum = X_val[y, x, :]
+                spectra_data.append((x, y, spectrum))
+                color = COLORS[len(spectra_lines) % 10]
+                # Plot the new spectrum
+                (line,) = ax_spectrum.plot(
+                    channels,
+                    spectrum,
+                    color=color,
+                    label=f"Pixel ({x}, {y})",
+                )
+                spectra_lines.append(line)
+
+                # Draw a cross on the image at (x, y) with the same color
+                cross_horizontal = ax_image.plot(
+                    [x - 3, x + 3], [y, y], color=color, linewidth=1.5
+                )
+                cross_vertical = ax_image.plot(
+                    [x, x], [y - 3, y + 3], color=color, linewidth=1.5
+                )
+                crosses.append([cross_horizontal[0], cross_vertical[0]])
+
+                ax_spectrum.legend()
+                ax_spectrum.relim()
+                ax_spectrum.autoscale_view()
+                ax_spectrum.set_title(f"Pixel Spectra (Last: {x}, {y})")
+                fig.canvas.draw()
+
+        # Connect the click event
+        fig.canvas.mpl_connect("button_press_event", on_click)
+        plt.show()
+
+
+        self.round = round_save
 
     def compare_class_spectra(self):
         """Opens data and calls data_analysis method `plot_spectra`,
@@ -202,6 +315,8 @@ if __name__ == "__main__":
     # model_tester.analyse_one_leaf(LEAF)
     # model_tester.compare_class_spectra()
 
+    model_tester.error_type_on_leaf(LEAF)
+
     for i in range(10):
         LEAF = "foliolo12_enves_a" + str(5 + i)
-        model_tester.analyse_one_leaf(LEAF)
+        # model_tester.analyse_one_leaf(LEAF)

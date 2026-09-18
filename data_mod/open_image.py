@@ -57,20 +57,12 @@ class OpenImage:
 
     def leaves(self, enves_only=True, leaf_numbers=None):
         """Returns a sorted list of all the leaf names in the db,
-        containing haz only if not `enves_only`.
+        containing haz only if not `enves_only`. Does not return the last images of each leaf because it doesn't exist for Temporal Mask
 
         :param list | None leaf_number: if is None, returns all leaves, else the ones in the list
         """
-        data_type = utils.load_config("TRAINING_CHOICE", "DATA_TYPE")
-        folder = {
-            "temp_mask": "Temporal_Mask",
-            "dist_mask": "Mask_RelDist",
-            "lab_mask": "Temporal_Mask",
-        }[
-            data_type
-        ]  # temporal mask even for lab because it's how it's sampled.
         leaf_names = []
-        folder_path = os.path.join(self.data_dir, folder)
+        folder_path = os.path.join(self.data_dir, "Temporal_Mask")
         leaves = (
             os.listdir(folder_path)
             if leaf_numbers is None

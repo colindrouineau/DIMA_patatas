@@ -100,7 +100,7 @@ class DataFormatter:
         Returns
         -------
         y_real, to_leaf_form : (np.array, np.array)
-            images of real label (y_real is zeroed outside the mask) and reconstituted leaf
+            images of real label and reconstituted leaf
         """
         y_real, mask = self.leaf_mask_data(leaf, return_mask=True)
 
@@ -127,7 +127,8 @@ class DataFormatter:
             if dimension == 2:
                 to_leaf_form[x, y, :] = element
 
-        y_real[~mask] = 0
+        # y_real is zeroed outside the mask
+        # y_real[~mask] = 0 
 
         return y_real, to_leaf_form
 
@@ -204,7 +205,7 @@ class DataFormatter:
         x_set,
         y_set,
         to_tensor=True,
-        scale=False,
+        scale=True,
         requires_grad: bool = False,
     ) -> tuple:
         """Fits the data for Neural Network training. Optional parameters to specify data type and transformation."""

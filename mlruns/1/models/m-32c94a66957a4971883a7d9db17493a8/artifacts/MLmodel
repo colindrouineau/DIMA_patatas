@@ -1,0 +1,20 @@
+artifact_path: /home/colind/work/Mines/TR_DIMA/DIMA_code/mlruns/1/models/m-32c94a66957a4971883a7d9db17493a8/artifacts
+flavors:
+  pytorch:
+    code: null
+    model_data: data
+    pytorch_version: 2.10.0
+is_signature_from_type_hint: false
+mlflow_version: 3.16.1
+model_id: m-32c94a66957a4971883a7d9db17493a8
+model_size_bytes: 4530491
+model_uuid: m-32c94a66957a4971883a7d9db17493a8
+prompts: null
+run_id: 04412d9b698048098591fb0f2a14964b
+signature:
+  inputs: '[{"name": "input", "type": "tensor", "tensor-spec": {"dtype": "float32",
+    "shape": [-1, 32]}}]'
+  outputs: null
+  params: null
+type_hint_from_example: false
+utc_time_created: '2026-09-18 21:09:52.530595'
